@@ -3,16 +3,18 @@
    [sim.model :as model]))
 
 (defn empty-grid []
-  (vec (repeat model/height (vec (repeat model/width \.)))))
+  (vec (repeat model/height
+              (vec (repeat model/width \.)))))
 
-(defn place-particles [grid particles]
-  (reduce
-   (fn [g {:keys [x y]}]
-     (assoc-in g [y x] \#))
-   grid
-   particles))
+(defn place-ball [grid {:keys [x y]}]
+  ;; ensure indices are integers
+  (let [ix (int x)
+        iy (int y)]
+    (assoc-in grid [iy ix] \#)))
 
-(defn render [{:keys [t particles]}]
+(defn render [{:keys [t ball]}]
   (println "\nT =" t)
-  (doseq [row (place-particles (empty-grid) particles)]
+  (doseq [row (place-ball (empty-grid) ball)]
     (println (apply str row))))
+
+

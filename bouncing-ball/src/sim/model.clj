@@ -13,26 +13,48 @@
 
 (defn initial-world []
   {:t 0
-   :particles
-   [{:id 1 :x 5  :y 10 :vx 1 :vy 0}
-    {:id 2 :x 20 :y 5  :vx 0 :vy 1}]})
+   :ball {:x 10
+         :y 5
+         :speed 1.0
+         :dir (/ Math/PI 4)}}) ; 45°
 
-(defn move [{:keys [x y vx vy] :as p}]
-  (-> p
-      (update :x + vx)
-      (update :y + vy)))
+(defn dir->vel [speed dir]
+  {:vx (* speed (Math/cos dir))
+   :vy (* speed (Math/sin dir))})
 
-(defn clamp [{:keys [x y] :as p}]
-  (assoc p
-         :x (mod x width)
-         :y (mod y height)))
+
+(defn move-ball [{:keys [x y speed dir] :as ball}]
+  (let [{:keys [vx vy]} (dir->vel speed dir)]
+    (-> ball
+        (update :x + vx)
+        (update :y + vy))))
+
+(defn bounce [{:keys [x y dir] :as ball}]
+  (cond
+    ;; left or right wall
+    (or (<= x 0) (>= x (dec width)))
+    (assoc ball :dir (- Math/PI dir))
+
+    ;; top or bottom wall
+    (or (<= y 0) (>= y (dec height)))
+    (assoc ball :dir (- dir))
+
+    :else
+    ball))
+
+(defn clamp-ball [{:keys [x y] :as ball}]
+  (assoc ball
+         :x (-> x (max 0) (min (dec width)))
+         :y (-> y (max 0) (min (dec height)))))
+
+(defn update-ball [ball]
+  (-> ball
+      move-ball
+      bounce
+      clamp-ball))
 
 (defn update-world [world]
   (-> world
       (update :t inc)
-      (update :particles
-              (fn [ps]
-                (->> ps
-                     (map move)
-                     (map clamp)
-                     vec)))))
+      (update :ball update-ball)))
+

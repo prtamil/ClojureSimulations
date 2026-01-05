@@ -13,21 +13,24 @@
 (defn update [world]
   (model/update-world world))
 
-(defn draw [{:keys [particles]}]
+(defn draw [{:keys [ball]}]
   (q/background 245)
   (q/fill 20)
-  (doseq [{:keys [x y]} particles]
-    (q/rect (* x scale)
-            (* y scale)
-            scale
-            scale)))
+
+  (let [{:keys [x y]} ball]
+     (q/ellipse
+      (* x scale)
+      (* y scale)
+      scale
+      scale)))
 
 (defn run-gui []
   (q/defsketch simulation
-    :title "Disciplined Simulation"
+    :title "Bouncing Ball"
     :size [(* model/width scale)
            (* model/height scale)]
     :setup setup
     :update update
     :draw draw
     :middleware [m/fun-mode]))
+

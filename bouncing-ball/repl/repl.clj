@@ -4,35 +4,22 @@
 (ns repl
   (:require
    [sim.model :as model]
-   [sim.ascii :as ascii]
-   [sim.quil :as quil]
-   [driver :as driver]))
+   [sim.ascii :as ascii]))
 
 ; test 
-(driver/reset-world!)
-(driver/step! 20)
-(driver/step! 1)
-(driver/step! 2)
-; test model
-(model/initial-world)
-(ascii/render (model/update-world (model/initial-world)))
+(def world (model/initial-world))
 
-;start gui
-(driver/start-gui!)
+(def world2 (iterate model/update-world world))
 
+(doseq [w (take 30 world2)]
+  (ascii/render w)
+  (Thread/sleep 100))
 
-;; after experiment we can update driver which is driver code so others can execute
-;;experiment 
-(defonce world (atom (model/initial-world)))
+(comment
+  (doseq [w (take 20 world2)]
+    (sim.ascii/render w)
+    (Thread/sleep 100)))
 
-(:particles world)
-
-(defn step!
-  ([] (step! 1))
-  ([n]
-   (swap! world #(nth (iterate model/update-world %) n))))
-
-(ascii/render (step! 1))
 
 
 
