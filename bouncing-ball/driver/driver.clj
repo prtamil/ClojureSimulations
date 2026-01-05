@@ -55,5 +55,6 @@
 (defn -main
   [& _args]
   ;; By default, just render current world in ASCII
-  (ascii/render @world))
+  (reset-world!)
+ (play-ascii! 40 200))
 
