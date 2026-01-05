@@ -50,3 +50,10 @@ It is intentionally optimized for:
 * driver = control
 * quil = visualization
 * build = distribute
+
+## License
+
+- **Source code** is licensed under the **MIT License** (see `LICENSE`)
+- **Assets (images, shaders, models, textures, etc.)** are licensed under  
+  **Creative Commons Attribution 4.0 (CC BY 4.0)** (see `ASSETS_LICENSE`)
+
