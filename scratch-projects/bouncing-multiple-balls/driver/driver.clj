@@ -1,0 +1,52 @@
+;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
+(ns driver
+  (:require
+   [sim.ascii :as ascii]
+   [sim.controller :as controller]
+   [sim.model :as model]
+   [sim.quil :as quil]
+   [sim.runtime :as runtime]))
+
+(def world runtime/world)
+(def gui-started? runtime/gui-running?)
+
+(defn reset-world! []
+  (swap! world model/reset-world))
+
+(defn step!
+  ([] (step! 1))
+  ([n]
+   (swap! world
+          #(model/update-world-steps % n (/ 1.0 (:sim-fps %))))
+   (ascii/render @world)
+   @world))
+
+(defn pause! [] (swap! world assoc :paused? true))
+(defn resume! [] (swap! world assoc :paused? false))
+(defn next-theme! [] (swap! world controller/apply-command :next-theme))
+(defn previous-theme! [] (swap! world controller/apply-command :previous-theme))
+(defn faster! [] (swap! world controller/apply-command :faster))
+(defn slower! [] (swap! world controller/apply-command :slower))
+(defn raise-sim-fps! [] (swap! world controller/apply-command :raise-sim-fps))
+(defn lower-sim-fps! [] (swap! world controller/apply-command :lower-sim-fps))
+
+(defn play-ascii!
+  "Animate a finite number of ASCII frames in an ANSI terminal."
+  ([frames] (play-ascii! frames 100))
+  ([frames delay-ms]
+   (when-not (and (nat-int? frames) (nat-int? delay-ms))
+     (throw (ex-info "Frames and delay must be non-negative integers"
+                     {:frames frames :delay-ms delay-ms})))
+   (dotimes [_ frames]
+     (print (str (char 27) "[2J" (char 27) "[;H"))
+     (flush)
+     (step!)
+     (Thread/sleep delay-ms))
+   @world))
+
+(defn start-gui! []
+  (quil/run-gui))
+
+(defn -main [& _args]
+  (println "Headless multiple-ball preview (launch Quil with driver/start-gui!)")
+  (step! 8))

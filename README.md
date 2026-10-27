@@ -18,6 +18,23 @@ model → ascii → repl → driver → quil
 
 Each folder exists to support one cognitive mode.
 
+## Repository layout
+
+The simulations built while establishing and testing the common architecture
+currently live under `scratch-projects/`:
+
+```text
+scratch-projects/
+|-- basic-clojure-simulation-framework/
+|-- bouncing-ball/
+|-- bouncing-multiple-balls/
+`-- curl-noise-vector-field/
+```
+
+Each project remains independently runnable from its own directory. The
+repository root is now available for the creative-coding structure that will
+be introduced incrementally.
+
 ## Design principles
 
 * Model before rendering
