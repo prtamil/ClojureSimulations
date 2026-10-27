@@ -2,7 +2,7 @@
   (:require
    [clojure.tools.build.api :as b]))
 
-(def lib 'sim/app)
+(def lib 'sim/matrix-rain)
 (def class-dir "target/classes")
 (def basis (b/create-basis {:project "deps.edn"}))
 (def version "0.1.0")

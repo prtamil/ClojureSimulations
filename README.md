@@ -28,6 +28,7 @@ scratch-projects/
 |-- basic-clojure-simulation-framework/
 |-- bouncing-ball/
 |-- bouncing-multiple-balls/
+|-- matrix-rain/
 `-- curl-noise-vector-field/
 ```
 
