@@ -21,20 +21,24 @@ Each folder exists to support one cognitive mode.
 ## Repository layout
 
 The simulations built while establishing and testing the common architecture
-currently live under `scratch-projects/`:
+live under `scratch-projects/`. Proven projects are promoted into the creative
+coding structure:
 
 ```text
 scratch-projects/
 |-- basic-clojure-simulation-framework/
 |-- bouncing-ball/
 |-- bouncing-multiple-balls/
-|-- matrix-rain/
-`-- curl-noise-vector-field/
+`-- matrix-rain/
+
+procedural/
+`-- fields/
+    `-- curl-noise-vector-field/
 ```
 
 Each project remains independently runnable from its own directory. The
-repository root is now available for the creative-coding structure that will
-be introduced incrementally.
+curl-noise vector-field project now lives with the other procedural field
+experiments.
 
 ## Design principles
 

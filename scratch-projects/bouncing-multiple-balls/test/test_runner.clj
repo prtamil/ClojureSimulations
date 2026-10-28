@@ -1,18 +1,24 @@
 (ns test-runner
   (:require
    [clojure.test :as test]
-   [sim.clock-test]
-   [sim.config-test]
-   [sim.controller-test]
-   [sim.model-test]
-   [sim.noise-test]
-   [sim.random-test]
-   [sim.runtime-test]
-   [sim.theme-test]))
+   [sim.utility.clock-test]
+   [sim.model.config-test]
+   [sim.app.controller-test]
+   [sim.render.lanterna-test]
+   [sim.model.ball-test]
+   [sim.model.collision-test]
+   [sim.model.core-test]
+   [sim.utility.random-test]
+   [sim.app.runtime-test]
+   [sim.utility.theme-test]
+   [sim.terminal.framework-test]))
 
 (def test-namespaces
-  '[sim.clock-test sim.config-test sim.controller-test sim.model-test
-    sim.noise-test sim.random-test sim.runtime-test sim.theme-test])
+  '[sim.utility.clock-test sim.model.config-test sim.app.controller-test
+    sim.render.lanterna-test sim.model.ball-test sim.model.collision-test
+    sim.model.core-test
+    sim.utility.random-test sim.app.runtime-test sim.utility.theme-test
+    sim.terminal.framework-test])
 
 (defn -main [& _args]
   (let [{:keys [fail error]} (apply test/run-tests test-namespaces)]

@@ -1,99 +1,72 @@
 # Basic Clojure Simulation Framework
 
-This is the repository's reference structure for future simulations. The
-example stays deliberately small: two particles move at fixed velocities and
-wrap around a grid. The surrounding architecture demonstrates how a larger
-simulation should separate pure rules, time, configuration, runtime state, and
-rendering.
+A deliberately small reference application showing how to structure an
+immutable, renderer-independent Clojure simulation. Two particles move at
+fixed velocities and wrap around a grid.
+
+## Design
 
 ```text
-config/random/noise -> model -> ascii -> repl -> driver -> quil
-                     theme -> model/runtime ----------^
-                              clock -> runtime --------^
-                         controller ------------------^
+config ---> particle rules ---> immutable world
+                                  |
+                    controller + fixed-step clock
+                                  |
+                       ASCII / terminal / Quil
 ```
 
-## Responsibilities
+- `sim.model.particle` owns the example motion rule.
+- `sim.model.core` owns lifecycle, time, pause/reset, and clock controls.
+- Renderers only project supplied world values.
+- `sim.app.runtime` is the single stateful boundary used by interactive views.
 
-| Namespace | Responsibility |
-| --- | --- |
-| `sim.config` | Defaults, dimensions, renderer settings, and validation |
-| `sim.random` | Deterministic SplitMix64 state and shuffled permutations |
-| `sim.noise` | Seeded Perlin noise and fBm sampling for models that need it |
-| `sim.theme` | Renderer-independent palettes and cyclic theme selection |
-| `sim.clock` | Pure wall-clock accumulation into fixed simulation steps |
-| `sim.model` | Immutable world construction and update rules |
-| `sim.ascii` | Headless rendering for inspection and tests |
-| `sim.controller` | Pure keyboard-event-to-command translation |
-| `sim.runtime` | The one shared process-level world atom and GUI lifecycle |
-| `driver` | Stable REPL/headless commands |
-| `sim.quil` | Graphical adapter over the same runtime world |
+The example carries only data it actually uses—there is no placeholder noise,
+random permutation, cache, or renderer state in the model.
 
-The model does not depend on Quil. Both ASCII and Quil render the same world,
-and both REPL commands and GUI controls update `sim.runtime/world`. Random state
-and the noise permutation are stored explicitly in the world, so seeded runs
-are reproducible. Theme selection is also world data, so headless tools, REPL
-commands, and the GUI always agree about the active palette.
+## Source layout
 
-## Configuration
-
-Every world carries the validated configuration used to create it. Begin with
-`sim.config/default-config` and change only the settings needed by an
-experiment:
-
-```clojure
-(require '[sim.config :as config]
-         '[sim.model :as model])
-
-(def small-config
-  (-> config/default-config
-      (assoc-in [:grid :width] 24)
-      (assoc-in [:grid :height] 12)
-      (assoc-in [:particles :initial]
-                [{:id 1 :x 2.0 :y 3.0 :vx 4.0 :vy 2.0}])))
-
-(def world (model/initial-world small-config 42))
+```text
+src/sim/
+|-- model/
+|   |-- config.clj
+|   |-- particle.clj
+|   `-- core.clj
+|-- render/{ascii,lanterna,quil}.clj
+|-- app/{controller,runtime}.clj
+|-- terminal/framework.clj
+`-- utility/{clock,theme}.clj
 ```
-
-The seed creates both an explicit random stream and a doubled permutation for
-coherent noise. The basic particle rule does not require noise, but the
-facility is ready for simulations built from this reference.
-
-## Fixed-step runtime
-
-Quil renders independently at the configured render rate. `sim.clock`
-accumulates elapsed nanoseconds and tells the model how many fixed simulation
-ticks were earned. Long frame stalls are capped, preventing an uncontrolled
-catch-up burst. `model/update-world-steps` is also the common stepping boundary
-for the GUI, driver, REPL, and tests.
 
 ## Run
 
-From this directory:
-
 ```powershell
-# Headless ASCII preview
-clojure -M:run
-
-# Interactive Quil window
-clojure -M -e "(require '[driver :as d]) (d/start-gui!)"
-
-# CIDER/nREPL session
-clojure -M:dev
-
-# Test suite
+clojure -M:run       # headless preview
+clojure -M:terminal  # interactive terminal
+clojure -M:gui       # Quil window
 clojure -M:test
-
-# Build a JAR
+clojure -M:dev
 clojure -T:build jar
+clojure -T:build uber
 ```
 
 ## Controls
 
 | Key | Action |
 | --- | --- |
-| `r` | Reset the model with its current config and seed |
-| `Space` | Pause or resume |
-| `t` / `T` | Next or previous color theme |
-| `]` / `[` | Raise or lower the simulation rate |
-| `q` or `Esc` | Close the Quil window |
+| `Space` | Pause / resume |
+| `r` | Reset |
+| `t` / `T` | Next / previous theme |
+| `]` / `[` | Raise / lower simulation frequency |
+| `q`, `Esc`, or `Ctrl-C` | Quit |
+
+## REPL
+
+```clojure
+(require '[sim.model.core :as model]
+         '[sim.render.ascii :as ascii])
+
+(def before (model/initial-world 42))
+(def after (model/update-world-steps before 60 (/ 1.0 60.0)))
+(ascii/render after)
+
+(assert (= before (model/initial-world 42)))
+```

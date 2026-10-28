@@ -3,11 +3,21 @@
 
  :deps
  {org.clojure/clojure {:mvn/version "1.12.4"}
+  com.googlecode.lanterna/lanterna {:mvn/version "3.1.5"}
+  net.java.dev.jna/jna-platform {:mvn/version "5.19.1"}
   quil/quil           {:mvn/version "4.3.1563"}}
 
  :aliases
  {:run
   {:main-opts ["-m" "driver"]}
+
+  :terminal
+  {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "sim.render.lanterna"]}
+
+  :gui
+  {:jvm-opts ["--enable-native-access=ALL-UNNAMED"]
+   :main-opts ["-m" "gui"]}
 
   :dev
   {:extra-paths ["test"]

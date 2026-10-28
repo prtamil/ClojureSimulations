@@ -1,16 +1,18 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 ;; Stable helpers: reset, step, controls, and GUI launch.
 (ns driver
+  (:gen-class)
   (:require
-   [sim.ascii :as ascii]
-   [sim.controller :as controller]
-   [sim.model :as model]
-   [sim.quil :as quil]
-   [sim.runtime :as runtime]))
+   [sim.render.ascii :as ascii]
+   [sim.app.controller :as controller]
+   [sim.model.core :as model]
+   [sim.render.lanterna :as lanterna]
+   [sim.app.runtime :as runtime]))
 
 ;; Compatibility aliases for REPL callers; Quil reads the same atom.
 (def world runtime/world)
 (def gui-started? runtime/gui-running?)
+(def terminal-started? runtime/terminal-running?)
 
 (defn reset-world! []
   (swap! world model/reset-world))
@@ -42,8 +44,12 @@
   (swap! world controller/apply-command :lower-sim-fps))
 
 (defn start-gui! []
-  (quil/run-gui))
+  (require 'sim.render.quil)
+  ((resolve 'sim.render.quil/run-gui)))
+
+(defn start-terminal! []
+  (lanterna/start!))
 
 (defn -main [& _args]
-  (println "Headless basic simulation preview (launch Quil with driver/start-gui!)")
+  (println "Headless basic simulation preview (use :terminal or driver/start-gui!)")
   (step! 8))
