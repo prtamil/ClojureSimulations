@@ -3,20 +3,25 @@
   (:require
    [clojure.test :refer [deftest is]]
    [bonsai.model.config :as config]
-   [bonsai.model.growth :as growth]
-   [bonsai.model.raster :as raster]
-   [bonsai.utility.theme :as theme]))
+   [bonsai.model.core :as model]
+   [bonsai.model.raster :as raster]))
 
-(defn- with-role [cells role]
+(defn- with-role
+  [cells role]
   (filter #(= role (:role %)) (vals cells)))
 
-(deftest rasterization-produces-a-sparse-coordinate-map
-  (let [{:keys [tree pot-top]}
-        (growth/grow-tree config/default-config 42 :moyogi)
-        cells (raster/bake-tree config/default-config tree pot-top
-                                (first theme/themes) 42)]
-    (is (map? cells))
-    (is (< (count cells) (config/cell-count config/default-config)))
+(defn- place-tree
+  [world]
+  (-> {}
+      (raster/place-trunk world)
+      (raster/place-crown world)
+      (raster/place-pot world)))
+
+(deftest rasterization-reads-as-trunk-crown-pot
+  (let [world (model/initial-world 42)
+        cells (place-tree world)]
+    (is (= (:cells world) cells))
+    (is (< (count cells) (config/cell-count (:config world))))
     (is (every? (fn [[[row column] cell]]
                   (= [row column] [(:row cell) (:column cell)]))
                 cells))
@@ -25,11 +30,10 @@
     (is (seq (with-role cells :pot)))))
 
 (deftest winter-presentation-hides-leaves-and-adds-snow
-  (let [{:keys [tree pot-top]}
-        (growth/grow-tree config/default-config 42 :moyogi)
-        winter (nth theme/themes 3)
-        cells (raster/bake-tree config/default-config tree pot-top winter 42)]
-    (is (seq (:foliage tree)))
-    (is (empty? (with-role cells :foliage)))
-    (is (seq (with-role cells :snow-tip)))
-    (is (every? #(= \* (:glyph %)) (with-role cells :snow-tip)))))
+  (let [spring (model/initial-world 42)
+        winter (model/cycle-theme spring 3)]
+    (is (seq (get-in winter [:tree :crown :foliage])))
+    (is (empty? (with-role (:cells winter) :foliage)))
+    (is (seq (with-role (:cells winter) :snow-tip)))
+    (is (every? #(= \* (:glyph %))
+                (with-role (:cells winter) :snow-tip)))))

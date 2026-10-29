@@ -63,57 +63,76 @@
       (throw (ex-info (str "Invalid leaf-fall configuration at " path ": " message)
                       {:path path :value value})))))
 
-(defn validate!
-  "Return a valid configuration unchanged, or throw ex-info with its bad path."
+(def ^:private value-checks
+  [[[:grid :width] #(and (int? %) (<= 24 % 320))
+    "must be an integer from 24 through 320"]
+   [[:grid :height] #(and (int? %) (<= 12 % 128))
+    "must be an integer from 12 through 128"]
+   [[:tree :max-depth] pos-int? "must be a positive integer"]
+   [[:tree :trunk-height-min] probability? "must be in [0, 1]"]
+   [[:tree :trunk-height-max] probability? "must be in [0, 1]"]
+   [[:tree :branch-spread] positive-number? "must be positive and finite"]
+   [[:tree :foliage-aspect] positive-number? "must be positive and finite"]
+   [[:tree :foliage-density-base] probability? "must be in [0, 1]"]
+   [[:tree :foliage-density-falloff] probability? "must be in [0, 1]"]
+   [[:fall :trail-length] nat-int? "must be a non-negative integer"]
+   [[:fall :start-delay-max-seconds] positive-number?
+    "must be positive and finite"]
+   [[:fall :speed-options] positive-number-vector?
+    "must be a non-empty vector of positive finite speeds"]
+   [[:phase :display-seconds] positive-number?
+    "must be positive and finite"]
+   [[:phase :reset-seconds] positive-number?
+    "must be positive and finite"]
+   [[:clock :simulation-fps :min] pos-int? "must be a positive integer"]
+   [[:clock :simulation-fps :initial] pos-int? "must be a positive integer"]
+   [[:clock :simulation-fps :max] pos-int? "must be a positive integer"]
+   [[:clock :simulation-fps :step] pos-int? "must be a positive integer"]
+   [[:clock :render-fps] pos-int? "must be a positive integer"]
+   [[:clock :max-frame-delta-ms] pos-int? "must be a positive integer"]
+   [[:render :cell-width] pos-int? "must be a positive integer"]
+   [[:render :cell-height] pos-int? "must be a positive integer"]
+   [[:render :terminal-cell-aspect] positive-number?
+    "must be positive and finite"]
+   [[:render :font-size] pos-int? "must be a positive integer"]
+   [[:render :hud-height] nat-int? "must be a non-negative integer"]
+   [[:render :footer-height] nat-int? "must be a non-negative integer"]
+   [[:render :background] rgb? "must be an RGB byte vector"]
+   [[:render :panel-background] rgb? "must be an RGB byte vector"]
+   [[:render :hud-text] rgb? "must be an RGB byte vector"]
+   [[:render :hud-accent] rgb? "must be an RGB byte vector"]
+   [[:render :hint] rgb? "must be an RGB byte vector"]])
+
+(defn- validate-values!
   [simulation-config]
-  (doseq [[path predicate message]
-          [[[:grid :width] #(and (int? %) (<= 24 % 320))
-            "must be an integer from 24 through 320"]
-           [[:grid :height] #(and (int? %) (<= 12 % 128))
-            "must be an integer from 12 through 128"]
-           [[:tree :max-depth] pos-int? "must be a positive integer"]
-           [[:tree :trunk-height-min] probability? "must be in [0, 1]"]
-           [[:tree :trunk-height-max] probability? "must be in [0, 1]"]
-           [[:tree :branch-spread] positive-number? "must be positive and finite"]
-           [[:tree :foliage-aspect] positive-number? "must be positive and finite"]
-           [[:tree :foliage-density-base] probability? "must be in [0, 1]"]
-           [[:tree :foliage-density-falloff] probability? "must be in [0, 1]"]
-           [[:fall :trail-length] nat-int? "must be a non-negative integer"]
-           [[:fall :start-delay-max-seconds] positive-number?
-            "must be positive and finite"]
-           [[:fall :speed-options] positive-number-vector?
-            "must be a non-empty vector of positive finite speeds"]
-           [[:phase :display-seconds] positive-number? "must be positive and finite"]
-           [[:phase :reset-seconds] positive-number? "must be positive and finite"]
-           [[:clock :simulation-fps :min] pos-int? "must be a positive integer"]
-           [[:clock :simulation-fps :initial] pos-int? "must be a positive integer"]
-           [[:clock :simulation-fps :max] pos-int? "must be a positive integer"]
-           [[:clock :simulation-fps :step] pos-int? "must be a positive integer"]
-           [[:clock :render-fps] pos-int? "must be a positive integer"]
-           [[:clock :max-frame-delta-ms] pos-int? "must be a positive integer"]
-           [[:render :cell-width] pos-int? "must be a positive integer"]
-           [[:render :cell-height] pos-int? "must be a positive integer"]
-           [[:render :terminal-cell-aspect] positive-number?
-            "must be positive and finite"]
-           [[:render :font-size] pos-int? "must be a positive integer"]
-           [[:render :hud-height] nat-int? "must be a non-negative integer"]
-           [[:render :footer-height] nat-int? "must be a non-negative integer"]
-           [[:render :background] rgb? "must be an RGB byte vector"]
-           [[:render :panel-background] rgb? "must be an RGB byte vector"]
-           [[:render :hud-text] rgb? "must be an RGB byte vector"]
-           [[:render :hud-accent] rgb? "must be an RGB byte vector"]
-           [[:render :hint] rgb? "must be an RGB byte vector"]]]
+  (doseq [[path predicate message] value-checks]
     (check! simulation-config path predicate message))
+  simulation-config)
+
+(defn- validate-tree-limits!
+  [simulation-config]
   (let [minimum (get-in simulation-config [:tree :trunk-height-min])
-        maximum (get-in simulation-config [:tree :trunk-height-max])
-        {:keys [min initial max]} (get-in simulation-config
-                                           [:clock :simulation-fps])]
+        maximum (get-in simulation-config [:tree :trunk-height-max])]
     (when-not (< minimum maximum)
       (throw (ex-info "Minimum trunk height must be below maximum"
                       {:path [:tree :trunk-height]
-                       :values [minimum maximum]})))
+                       :values [minimum maximum]}))))
+  simulation-config)
+
+(defn- validate-clock!
+  [simulation-config]
+  (let [{:keys [min initial max]}
+        (get-in simulation-config [:clock :simulation-fps])]
     (when-not (<= min initial max)
       (throw (ex-info "Initial simulation FPS must be inside its range"
                       {:path [:clock :simulation-fps]
                        :values [min initial max]}))))
   simulation-config)
+
+(defn validate!
+  "Return a valid configuration unchanged, or throw ex-info with its bad path."
+  [simulation-config]
+  (-> simulation-config
+      validate-values!
+      validate-tree-limits!
+      validate-clock!))

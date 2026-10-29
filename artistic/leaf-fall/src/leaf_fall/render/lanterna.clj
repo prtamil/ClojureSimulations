@@ -76,7 +76,7 @@
           (str/upper-case (model/phase-name world))
           (:cycle world)
           (model/active-leaf-count world)
-          (count (:leaves world))
+          (count (:leaf-templates world))
           (:sim-fps world)
           (:tick world)))
 

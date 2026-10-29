@@ -17,40 +17,40 @@
 ;; the header, trunk, branches, foliage or snow, and pot. A deliberate visual
 ;; change should be inspected first and these values updated only afterward.
 (def ^:private expected-snapshots
-  {[:chokkan "SPRING"] "eb65206265efda7bbf152833bcff66c87bca9accd9caa0bcb3e2c649e4bd1db5"
-   [:chokkan "SUMMER"] "ecbcc00b224164d6472bfa45da1efa066fb3ac2a98907acece24fb5c17f24477"
-   [:chokkan "AUTUMN"] "f6f3ea70c967ae7d0a0b2b6fc03687bb59834cb820924eecc4f107879541ba6a"
-   [:chokkan "WINTER"] "037855e22dc8fba3b6e1aaca5c90f8f0169203fa024e22a8b1042a64de38e9f7"
-   [:chokkan "CHERRY"] "4ea6807743bd33bdbd62d67e8e51064c845ca8d4bab18d5cd2e9e93ee9c57012"
-   [:chokkan "MONO"] "386f6a33fd1f18b78c4274035ad962850b8cbccdf341620cd35ff32653fd7704"
+  {[:chokkan "SPRING"] "56f34267634cd92b9623632c87dd65d4a6a4b84d217d13abdb32320cf05d4018"
+   [:chokkan "SUMMER"] "f55b85d60562bb538b78d676f996a2c1c30e789dd0c547763fbefd776730f16c"
+   [:chokkan "AUTUMN"] "959db4fabd741e9f5fe13f90bfd94f9a85882edf4e881764c13a65cf520714f6"
+   [:chokkan "WINTER"] "1156086e90cb2ec43aa073707084fd5ae3c292d50b8ad426493c48369e794607"
+   [:chokkan "CHERRY"] "9334b075e76103865a60bcbd22798fed2c2616671b63be03d9415bf6e4143054"
+   [:chokkan "MONO"] "0de877a79dd290402a082b5a6430cf8e3337c41bbd8c0a4a94d82ab9b6224e81"
 
-   [:moyogi "SPRING"] "db74c99c723ebbb0806146022083c9712cced79dc7ff21c3301a395c3af6fd9c"
-   [:moyogi "SUMMER"] "575e0ac5a520de26a14f2a948adcf5e26a576c39b7774c8292d51cf702f122ac"
-   [:moyogi "AUTUMN"] "f97a88dca4f0efc0ee118778c582c215f9e205e801b30abada19b8e2e85e5246"
-   [:moyogi "WINTER"] "ee159636eb0d225da17a797db58a9d4b9a48dcf89224377826271ddc88e3f8ed"
-   [:moyogi "CHERRY"] "4407522923b6605ce036894ddfbfa92452fbe0e0a93d63735c2f4e0745cdd96d"
-   [:moyogi "MONO"] "a346ce09c5b562b74ea5a740ab7a3c39f0d2f45e57c178da4c81a5d72c2d3a21"
+   [:moyogi "SPRING"] "27cc1cbedcb57df7228db6ba70e2feb8f56cb93b76c36e3ac44b4a7d8a493e7b"
+   [:moyogi "SUMMER"] "72b4937f0d60c527755554596396e0f6b78660b7f343f8d174da49c4f6462fc3"
+   [:moyogi "AUTUMN"] "13b8863881e1e6739aebfeb66b2326c3d82dfc12c1b5931a2305dd7de930687d"
+   [:moyogi "WINTER"] "ef84e2532f98d894225c4cfe35c829597e93b7bcb7f1b34d9689836c117ea2d2"
+   [:moyogi "CHERRY"] "8d413d39955f3510e5126673cbaf5991e470f92d23e18a24ce2b21bd50bd6e0b"
+   [:moyogi "MONO"] "c0f702f662ce969f74f16d57f930fc6efedd38131c1a02726db4a6355684a23b"
 
-   [:shakan "SPRING"] "8082b26f7c3cf38b7736e439fe19e3883de53ec7468fae84a3d6edabb7d90665"
-   [:shakan "SUMMER"] "495fe8203c843399a42f91051e643eadb1c3162b3dbeaaba3d2822b8e5825cb1"
-   [:shakan "AUTUMN"] "55c3c3bb46558f2824abcc11e5e2b2df35b2132a688c6e3711797e1ca36f8ed1"
-   [:shakan "WINTER"] "338729ebee090477307962e5d1ebe6c5fa8729bf1aa4cc9c69b08e71351d6036"
-   [:shakan "CHERRY"] "da2ba91eeaf2ec5fc4ff43a53599b306db6b12f31f0ce7112879547815546ead"
-   [:shakan "MONO"] "76ca74bbf0dc6bf949192747e5b049df28e96e08122f404504b21f0dcc8b577a"
+   [:shakan "SPRING"] "03d6b1ca032d45f7bc70a099c3e451ba8380fc4160f2aacc1c482b60864c6956"
+   [:shakan "SUMMER"] "99afa93e72990a43091cb8fee4a7510f426ebf911d17093e481d17dedb9a2c47"
+   [:shakan "AUTUMN"] "a7c0e32f358d0e0c049689091f6e2b1592c159038ed4c922681dce14f09ef730"
+   [:shakan "WINTER"] "72895a825ed40d324459ee08876263e20ba551d579cc4cf1a8aa738e07e3d5c8"
+   [:shakan "CHERRY"] "fa6fc4c6715df84437eb2dd9269bd97af8329bfb8b1ababbae9d35779b9c3191"
+   [:shakan "MONO"] "22e810d5c64c443cb37e871d355881aa425f56281675029cebf901562b4f97b7"
 
-   [:kengai "SPRING"] "d5b72172dd1578526ece3ec1f987d7b68d5dea07cbf21146700e8a8d5212310e"
-   [:kengai "SUMMER"] "0ff980998d758162a1670572a51b18e348d1aa1a644a94aeb6a7be13fa19827b"
-   [:kengai "AUTUMN"] "20601ca24b852af2175c68ab523503d604990da06d56735aafb7ae6d276e0cf4"
-   [:kengai "WINTER"] "477ffc41e6a8d1c6cfa4771d43f520b6c7b4242cfae756ddcfd416a04da4cc54"
-   [:kengai "CHERRY"] "824f8981b24888c01ca4b777ad437cddf5b34785cc8c5568f5c7d76c043157ff"
-   [:kengai "MONO"] "bc09ad9d08b73286343110ea643d7ee93e82c2a31f75f86e42d6092f97e078a0"
+   [:kengai "SPRING"] "c34dc8838b74f72c43133c6dea5a619d9433dc2eb5afb15b497b636ed72cc9d0"
+   [:kengai "SUMMER"] "8bd98e5bcd6f857b7d9c62516dba9aef9d7aec374810b986b08755e1c773d10f"
+   [:kengai "AUTUMN"] "b92bfe6f380d0d7299ded9536979cbfb7ce90da47c317be523e5277efb033c46"
+   [:kengai "WINTER"] "49c49ba618405cb5fb51384a7b0a76adafb72aee2f70a3589717fd77a91f408f"
+   [:kengai "CHERRY"] "e3a432d5c3b4abd9450025d110dd349df2a55f91eac88d9ed22ac1e0e25858b8"
+   [:kengai "MONO"] "3e26a060cdc3ca8dc8cdd61c0d692f038503c0d7e9dda762aeaf5ea0fd820a3f"
 
-   [:bunjin "SPRING"] "984c8674141efbb06a9c86ee65ce0ef1d846f7d29779a524b8af8cae71669e2f"
-   [:bunjin "SUMMER"] "93584ff8f458d29d0e5d76f867f71dcb2a09c9ae5458579ab1023cbf929c542f"
-   [:bunjin "AUTUMN"] "8ec990df617bec79b35a8e1581ab34e09332ba4655e5ae005fc2afc5daa4a271"
-   [:bunjin "WINTER"] "e2a2f4cd74bf87d9ebc57e04de0095968de21b0eaca47ad1161bd1ed85564db6"
-   [:bunjin "CHERRY"] "a17ca0bd46221345810b1fa426b2649bfc4955c7bb8f4ad95a48a89d1c069c2d"
-   [:bunjin "MONO"] "880513271ffe0cea25c1749a6680f6d3afc3168a1bb6ae0fcce7f8577dece5dd"})
+   [:bunjin "SPRING"] "04b8b65333980d8073da04c6711a8b9d0b56dd57c086e5fff35034f2dc31d94f"
+   [:bunjin "SUMMER"] "4db73bcc698432c808ec6a079d5aeb8b1140762bcb6baaa9fcc48db780a0da50"
+   [:bunjin "AUTUMN"] "3fddb2b0005d4143f9e5f80d31ef3ff250016d5be578cf8428d2c3102c4cae00"
+   [:bunjin "WINTER"] "547d50445b4e534a53c6d391d9804edd1c86a7ef1853cefae75f39576196e842"
+   [:bunjin "CHERRY"] "d47b77e1433562870896a10872089f1333d8c9bcbc9826b67dff2b0c38d6bb36"
+   [:bunjin "MONO"] "a82b29b2094e4182442feda89e5f363b68738c793373933f857236648653562c"})
 
 (defn- sha-256 [text]
   (let [digest (MessageDigest/getInstance "SHA-256")]
@@ -63,7 +63,7 @@
   (let [base-world (model/initial-world snapshot-seed)]
     (doseq [style-index (range (count config/style-order))
             theme-index (range (count theme/themes))
-            :let [world (model/rebuild-scene
+            :let [world (model/construct-tree
                          (assoc base-world
                                 :style-index style-index
                                 :theme-index theme-index))

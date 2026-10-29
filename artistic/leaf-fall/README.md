@@ -27,13 +27,14 @@ The application structure follows the simulation framework in
 rendering is informed by `artistic/bonsai`.
 
 ```text
-seed + config
-     |
-     v
-recursive geometry ---> sparse raster ---> immutable world
-                              |                  |
-                       leaf templates      elapsed-time motion
-                              \                  /
+seed + config -> calculate trunk -> calculate crown
+                                      |
+                     place trunk -> place crown -> scatter leaves
+                                      |
+                              immutable world
+                                      |
+                         display -> falling -> reset
+                                      |
                                semantic cells
                               /       |        \
                          headless  terminal    Quil
@@ -43,10 +44,10 @@ recursive geometry ---> sparse raster ---> immutable world
 src/leaf_fall/
 |-- model/
 |   |-- config.clj    validated simulation parameters
-|   |-- growth.clj    recursive tree geometry
-|   |-- raster.clj    sparse bark cells and leaf templates
-|   |-- leaf.clj      elapsed-time particle motion
-|   `-- core.clj      immutable world and phase lifecycle
+|   |-- growth.clj    calculate explicit trunk and crown data
+|   |-- raster.clj    place bark and scatter leaf templates
+|   |-- leaf.clj      move explicit falling-leaf data
+|   `-- core.clj      readable construction and lifecycle story
 |-- render/
 |   |-- cells.clj     model-to-semantic-cell projection
 |   |-- ascii.clj     pure headless renderer
@@ -68,6 +69,28 @@ The model has no Quil dependency or mutable global state. A seed determines
 the tree geometry, sparse raster, and leaf templates. All renderers consume
 the same painter-ordered semantic cells, so headless output, the terminal, and
 the graphical window show the same simulation.
+
+## Model data
+
+The runtime structure exposes the domain directly:
+
+    {:tree
+     {:trunk {:base [...]
+              :top [...]
+              :height 25
+              :segments [...]
+              :marks [...]}
+      :crown {:branches [...]
+              :foliage [...]}}
+
+     :cells {...}
+     :leaf-templates [...]
+     :falling-leaves [...]
+     :phase :display}
+
+Tree calculation is independent of placement. Starting leaf fall preserves the
+tree and bark cells; only the leaf templates become moving particles. See
+learning.md for the complete model walkthrough.
 
 ## Run
 

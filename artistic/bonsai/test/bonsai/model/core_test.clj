@@ -17,18 +17,20 @@
     (is (map? (:cells first-world)))
     (is (< (count (:cells first-world))
            (config/cell-count (:config first-world))))
-    (is (seq (get-in first-world [:tree :segments])))
-    (is (seq (get-in first-world [:tree :foliage])))
+    (is (seq (get-in first-world [:tree :trunk :segments])))
+    (is (seq (get-in first-world [:tree :trunk :branch-sites])))
+    (is (seq (get-in first-world [:tree :crown :foliage])))
+    (is (int? (get-in first-world [:pot :top-row])))
     (is (seq (cells-with-role first-world :pot)))
     (is (some #(= \: (:glyph %)) (cells-with-role first-world :pot)))))
 
 (deftest every-classical-style-produces-a-tree
   (let [base (model/initial-world 9001)]
     (doseq [style-index (range (count config/style-order))
-            :let [world (model/rebuild-scene
+            :let [world (model/construct-tree
                          (assoc base :style-index style-index))]]
       (testing (name (model/current-style-key world))
-        (is (pos? (count (get-in world [:tree :segments]))))
+        (is (pos? (count (get-in world [:tree :trunk :segments]))))
         (is (seq (cells-with-role world :trunk-dark)))))))
 
 (deftest winter-is-a-bare-tree
@@ -36,14 +38,14 @@
         (first (keep-indexed #(when (= "WINTER" (:name %2)) %1) theme/themes))
         base-world (model/initial-world 42)]
     (doseq [style-index (range (count config/style-order))
-            :let [winter (model/rebuild-scene
+            :let [winter (model/construct-tree
                           (assoc base-world
                                  :style-index style-index
                                  :theme-index winter-index))]]
       (testing (name (model/current-style-key winter))
-        (is (seq (get-in winter [:tree :foliage])))
+        (is (seq (get-in winter [:tree :crown :foliage])))
         (is (empty? (cells-with-role winter :foliage)))
-        (is (seq (get-in winter [:tree :tips])))
+        (is (seq (get-in winter [:tree :crown :tips])))
         (is (seq (cells-with-role winter :snow-tip)))
         (is (every? #(= \* (:glyph %))
                     (cells-with-role winter :snow-tip)))

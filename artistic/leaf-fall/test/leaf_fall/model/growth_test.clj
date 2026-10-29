@@ -5,26 +5,57 @@
    [leaf-fall.model.config :as config]
    [leaf-fall.model.growth :as growth]))
 
-(deftest seeded-growth-is-repeatable
-  (is (= (growth/grow-tree config/default-config 42)
-         (growth/grow-tree config/default-config 42)))
-  (is (not= (growth/grow-tree config/default-config 42)
-            (growth/grow-tree config/default-config 43))))
+(defn- calculate-tree
+  [seed]
+  (let [settings {:config config/default-config :seed seed}
+        trunk (growth/calculate-trunk settings)
+        crown (growth/calculate-crown settings trunk)]
+    {:trunk trunk
+     :crown crown}))
 
-(deftest growth-produces-renderer-independent-tree-geometry
-  (let [{:keys [segments marks foliage] :as tree}
-        (growth/grow-tree config/default-config 42)]
-    (testing "the result is geometry, not a canvas or particle pool"
-      (is (= #{:segments :marks :foliage} (set (keys tree))))
-      (is (not (contains? tree :canvas)))
-      (is (not (contains? tree :leaves))))
-    (testing "the tree contains a trunk, branches, details, and foliage"
-      (is (some #(= :trunk (:role %)) segments))
-      (is (some #(= :branch (:role %)) segments))
-      (is (seq marks))
-      (is (seq foliage)))
+(deftest empty-values-document-tree-data
+  (is (= #{:base :top :height :segments :marks}
+         (set (keys growth/empty-trunk))))
+  (is (= {:branches [] :foliage []}
+         growth/empty-crown))
+  (is (= {:trunk growth/empty-trunk
+          :crown growth/empty-crown}
+         growth/empty-tree)))
+
+(deftest seeded-calculation-is-repeatable
+  (is (= (calculate-tree 42)
+         (calculate-tree 42)))
+  (is (not= (calculate-tree 42)
+            (calculate-tree 43))))
+
+(deftest calculation-reads-as-trunk-then-crown
+  (let [{:keys [trunk crown]} (calculate-tree 42)]
+    (testing "trunk data describes its own geometry"
+      (is (vector? (:base trunk)))
+      (is (vector? (:top trunk)))
+      (is (pos-int? (:height trunk)))
+      (is (seq (:segments trunk)))
+      (is (seq (:marks trunk))))
+    (testing "crown data contains recursive branches and foliage"
+      (is (seq (:branches crown)))
+      (is (seq (:foliage crown))))
     (testing "recursion stays inside the configured depth domain"
-      (is (every? #(<= 0 (:depth %) (get-in config/default-config
-                                             [:tree :max-depth]))
-                  segments))
-      (is (every? pos-int? (map :radius foliage))))))
+      (is (every? #(<= 0 (:depth %)
+                       (get-in config/default-config [:tree :max-depth]))
+                  (:branches crown)))
+      (is (every? pos-int? (map :radius (:foliage crown)))))))
+
+(deftest calculated-geometry-has-finite-coordinates
+  (let [{:keys [trunk crown]} (calculate-tree 9001)
+        segments (concat (:segments trunk) (:branches crown))
+        segment-coordinates
+        (mapcat #(concat (:start %) (:end %)) segments)
+        mark-coordinates
+        (mapcat :position (:marks trunk))
+        foliage-coordinates
+        (mapcat :center (:foliage crown))
+        coordinates
+        (concat segment-coordinates mark-coordinates foliage-coordinates)]
+    (is (every? #(and (number? %)
+                      (Double/isFinite (double %)))
+                coordinates))))

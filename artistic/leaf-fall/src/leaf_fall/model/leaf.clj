@@ -1,41 +1,61 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.leaf
-  "Pure elapsed-time motion for falling leaf particles.")
+  "Pure elapsed-time motion for falling leaves.")
+
+;; Leaf data
+;;
+;; A template waits in the tree:
+;; {:position [row column] :glyph \* :delay-seconds 0.25 :speed 10.0}
+;;
+;; A falling leaf keeps both its origin and current position:
+;; {:origin [row column] :position [floating-row column]
+;;  :glyph \* :delay-remaining 0.25 :speed 10.0}
+
+(def empty-particle
+  {:origin nil
+   :position nil
+   :glyph nil
+   :delay-remaining 0.0
+   :speed 0.0})
 
 (defn start
-  "Turn an immutable tree leaf template into a falling particle."
-  [{:keys [origin glyph delay-seconds speed]}]
-  {:origin origin
-   :position-row (double (first origin))
-   :column (second origin)
-   :glyph glyph
-   :delay-remaining (double delay-seconds)
-   :speed (double speed)})
+  "Turn an immutable leaf template into a falling leaf."
+  [{:keys [position glyph delay-seconds speed]}]
+  (let [[row column] position]
+    {:origin position
+     :position [(double row) column]
+     :glyph glyph
+     :delay-remaining (double delay-seconds)
+     :speed (double speed)}))
 
-(defn waiting? [leaf]
-  (pos? (:delay-remaining leaf)))
+(defn waiting?
+  [falling-leaf]
+  (pos? (:delay-remaining falling-leaf)))
 
 (defn advance
-  "Advance a particle by seconds, spending its delay before moving it."
-  [leaf seconds]
-  (let [delay (:delay-remaining leaf)
+  "Advance one leaf, spending its delay before moving."
+  [falling-leaf seconds]
+  (let [delay (:delay-remaining falling-leaf)
         waiting-seconds (min delay seconds)
-        active-seconds (- seconds waiting-seconds)]
-    (-> leaf
+        falling-seconds (- seconds waiting-seconds)]
+    (-> falling-leaf
         (assoc :delay-remaining (- delay waiting-seconds))
-        (update :position-row + (* (:speed leaf) active-seconds)))))
+        (update-in [:position 0]
+                   + (* (:speed falling-leaf) falling-seconds)))))
 
-(defn head-row [leaf]
-  (long (Math/floor (:position-row leaf))))
+(defn head-row
+  [falling-leaf]
+  (long (Math/floor (double (first (:position falling-leaf))))))
 
 (defn finished?
-  [row-count trail-length leaf]
-  (> (head-row leaf) (+ row-count trail-length)))
+  [falling-leaf row-count trail-length]
+  (> (head-row falling-leaf)
+     (+ row-count trail-length)))
 
-(defn advance-all
-  "Advance particles and discard those whose complete trails left the grid."
-  [leaves seconds row-count trail-length]
-  (into []
-        (comp (map #(advance % seconds))
-              (remove #(finished? row-count trail-length %)))
-        leaves))
+(defn advance-leaves
+  "Advance all falling leaves and remove completed trails."
+  [falling-leaves seconds row-count trail-length]
+  (->> falling-leaves
+       (map #(advance % seconds))
+       (remove #(finished? % row-count trail-length))
+       vec))

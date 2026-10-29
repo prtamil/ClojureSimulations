@@ -1,9 +1,22 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.raster
-  "Rasterize tree geometry into sparse bark cells and leaf templates."
+  "Place tree geometry into bark cells and immutable leaf templates."
   (:require
    [leaf-fall.model.config :as config]
    [leaf-fall.utility.random :as random]))
+
+;; Scene data
+
+(def empty-scene
+  {:cells {}
+   :leaf-templates []})
+
+;; A sparse cell:
+;; {:row row :column column :glyph character :role :trunk}
+;;
+;; A leaf template:
+;; {:position [row column] :glyph character
+;;  :delay-seconds 1.5 :speed 9.0}
 
 (def ^:private leaf-glyphs [\* \@ \& \# \% \o \~])
 
@@ -14,26 +27,40 @@
 
 (defn cell-at
   "Return the sparse cell at row and column, or nil outside the grid."
-  [simulation-config cells row column]
-  (when (in-grid? simulation-config row column)
-    (get cells [row column])))
+  [world row column]
+  (when (in-grid? (:config world) row column)
+    (get (:cells world) [row column])))
 
-(defn- priority [role]
+;; Placing bark
+
+(defn- make-cell
+  [row column glyph role]
+  {:row row
+   :column column
+   :glyph glyph
+   :role role})
+
+(defn- drawing-priority
+  [role]
   (case role
     :trunk 2
     :branch 1
     0))
 
-(defn- paint-cell [simulation-config cells row column glyph role]
+(defn- put-cell
+  [simulation-config cells row column glyph role]
   (if-not (in-grid? simulation-config row column)
     cells
-    (let [existing (get cells [row column])]
-      (if (> (priority (:role existing)) (priority role))
+    (let [position [row column]
+          existing (get cells position)
+          existing-wins? (> (drawing-priority (:role existing))
+                            (drawing-priority role))]
+      (if existing-wins?
         cells
-        (assoc cells [row column]
-               {:row row :column column :glyph glyph :role role})))))
+        (assoc cells position (make-cell row column glyph role))))))
 
-(defn- branch-glyph [role row-step column-step]
+(defn- choose-branch-glyph
+  [role row-step column-step]
   (cond
     (= role :trunk) \|
     (zero? column-step) \|
@@ -41,17 +68,19 @@
     (= (neg? row-step) (pos? column-step)) \/
     :else \\))
 
-(defn- line-points
-  "Inclusive integer points for a line, using Bresenham's algorithm."
+(defn- points-on-line
+  "Return inclusive integer points for one Bresenham line."
   [[start-row start-column] [end-row end-column]]
   (let [column-distance (Math/abs (long (- end-column start-column)))
         row-distance (Math/abs (long (- end-row start-row)))
-        column-step (cond (< start-column end-column) 1
-                          (> start-column end-column) -1
-                          :else 0)
-        row-step (cond (< start-row end-row) 1
-                       (> start-row end-row) -1
-                       :else 0)]
+        column-step (cond
+                      (< start-column end-column) 1
+                      (> start-column end-column) -1
+                      :else 0)
+        row-step (cond
+                   (< start-row end-row) 1
+                   (> start-row end-row) -1
+                   :else 0)]
     (loop [row start-row
            column start-column
            error (- column-distance row-distance)
@@ -69,22 +98,28 @@
                       (if move-row? column-distance 0))
                    points)))))))
 
-(defn- paint-segment [simulation-config cells {:keys [from to role]}]
-  (let [[start-row start-column] from
-        [end-row end-column] to
+(defn- draw-segment
+  [simulation-config cells role {:keys [start end]}]
+  (let [[start-row start-column] start
+        [end-row end-column] end
         row-step (compare end-row start-row)
         column-step (compare end-column start-column)
-        glyph (branch-glyph role row-step column-step)]
-    (reduce (fn [painted [row column]]
-              (paint-cell simulation-config painted row column glyph role))
-            cells
-            (line-points from to))))
+        glyph (choose-branch-glyph role row-step column-step)]
+    (reduce
+     (fn [cells [row column]]
+       (put-cell simulation-config cells row column glyph role))
+     cells
+     (points-on-line start end))))
 
-(defn- paint-mark [simulation-config cells {:keys [position glyph role]}]
+(defn- draw-mark
+  [simulation-config cells {:keys [position glyph]}]
   (let [[row column] position]
-    (paint-cell simulation-config cells row column glyph role)))
+    (put-cell simulation-config cells row column glyph :trunk)))
 
-(defn- foliage-sites [simulation-config {:keys [center radius]}]
+;; Scattering leaves
+
+(defn- positions-in-foliage
+  [simulation-config {:keys [center radius]}]
   (let [[center-row center-column] center
         aspect (get-in simulation-config [:tree :foliage-aspect])
         column-radius (int (Math/ceil (/ radius (Math/sqrt aspect))))]
@@ -97,52 +132,96 @@
                             (* aspect column-offset column-offset))]
           :when (and (in-grid? simulation-config row column)
                      (<= distance (* radius radius)))]
-      [row column distance])))
+      {:position [row column]
+       :distance distance})))
 
-(defn- maybe-add-leaf
-  [simulation-config [rng leaves occupied] [row column distance] radius]
-  (let [base (get-in simulation-config [:tree :foliage-density-base])
-        falloff (get-in simulation-config [:tree :foliage-density-falloff])
-        threshold (+ base (* falloff (/ distance (inc (* radius radius)))))
-        [rng roll] (random/unit rng)]
-    (if (or (contains? occupied [row column]) (<= roll threshold))
-      [rng leaves occupied]
-      (let [[rng glyph-index] (random/index rng (count leaf-glyphs))
-            [rng delay] (random/between
-                         rng 0.0
-                         (get-in simulation-config
-                                 [:fall :start-delay-max-seconds]))
+(defn- try-adding-leaf
+  [leaf-state simulation-config {:keys [position distance]} radius]
+  (let [base-density
+        (get-in simulation-config [:tree :foliage-density-base])
+        edge-falloff
+        (get-in simulation-config [:tree :foliage-density-falloff])
+        threshold (+ base-density
+                     (* edge-falloff
+                        (/ distance (inc (* radius radius)))))
+        [random-state chance]
+        (random/unit (:random-state leaf-state))
+        leaf-state (assoc leaf-state :random-state random-state)]
+    (if (or (contains? (:occupied leaf-state) position)
+            (<= chance threshold))
+      leaf-state
+      (let [[random-state glyph-index]
+            (random/index (:random-state leaf-state)
+                          (count leaf-glyphs))
+            [random-state delay]
+            (random/between
+             random-state
+             0.0
+             (get-in simulation-config
+                     [:fall :start-delay-max-seconds]))
             speeds (get-in simulation-config [:fall :speed-options])
-            [rng speed-index] (random/index rng (count speeds))]
-        [rng
-         (conj leaves {:origin [row column]
-                       :glyph (nth leaf-glyphs glyph-index)
-                       :delay-seconds delay
-                       :speed (nth speeds speed-index)})
-         (conj occupied [row column])]))))
+            [random-state speed-index]
+            (random/index random-state (count speeds))
+            template
+            {:position position
+             :glyph (nth leaf-glyphs glyph-index)
+             :delay-seconds delay
+             :speed (nth speeds speed-index)}]
+        (-> leaf-state
+            (assoc :random-state random-state)
+            (update :leaf-templates conj template)
+            (update :occupied conj position))))))
 
-(defn- scatter-foliage [simulation-config cells foliage seed]
-  (let [initial-state [(random/derive-state seed 0x00dec0de)
-                       []
-                       (set (keys cells))]]
-    (second
-     (reduce
-      (fn [state {:keys [radius] :as cloud}]
-        (reduce #(maybe-add-leaf simulation-config %1 %2 radius)
-                state
-                (foliage-sites simulation-config cloud)))
-      initial-state
-      foliage))))
+(defn- scatter-foliage
+  [leaf-state simulation-config foliage]
+  (reduce
+   (fn [leaf-state {:keys [radius] :as cloud}]
+     (reduce #(try-adding-leaf %1 simulation-config %2 radius)
+             leaf-state
+             (positions-in-foliage simulation-config cloud)))
+   leaf-state
+   foliage))
 
-(defn bake-tree
-  "Create sparse bark cells and immutable leaf templates from tree geometry."
-  [simulation-config tree seed]
-  (let [simulation-config (config/validate! simulation-config)
-        cells (reduce (partial paint-segment simulation-config)
-                      {}
-                      (:segments tree))
-        cells (reduce (partial paint-mark simulation-config)
+;; Public placement story
+
+(defn place-trunk
+  "Place trunk segments and root marks into a scene."
+  [scene world]
+  (let [simulation-config (:config world)
+        trunk (get-in world [:tree :trunk])
+        cells (reduce #(draw-segment simulation-config %1 :trunk %2)
+                      (:cells scene)
+                      (:segments trunk))
+        cells (reduce #(draw-mark simulation-config %1 %2)
                       cells
-                      (:marks tree))
-        leaves (scatter-foliage simulation-config cells (:foliage tree) seed)]
-    {:cells cells :leaves leaves}))
+                      (:marks trunk))]
+    (assoc scene :cells cells)))
+
+(defn place-crown
+  "Place crown branches into a scene."
+  [scene world]
+  (let [simulation-config (:config world)
+        branches (get-in world [:tree :crown :branches])
+        cells
+        (reduce
+         (fn [cells {:keys [depth] :as branch}]
+           (draw-segment simulation-config
+                         cells
+                         (if (<= depth 2) :trunk :branch)
+                         branch))
+         (:cells scene)
+         branches)]
+    (assoc scene :cells cells)))
+
+(defn scatter-leaves
+  "Scatter deterministic leaf templates through the crown foliage."
+  [scene world]
+  (let [first-state
+        {:random-state (random/derive-state (:seed world) 0x00dec0de)
+         :leaf-templates []
+         :occupied (set (keys (:cells scene)))}
+        complete-state
+        (scatter-foliage first-state
+                         (:config world)
+                         (get-in world [:tree :crown :foliage]))]
+    (assoc scene :leaf-templates (:leaf-templates complete-state))))

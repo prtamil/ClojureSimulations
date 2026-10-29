@@ -25,8 +25,9 @@ changes the underlying branch structure.
 
 ## Clojure model
 
-- Tree data is composed of persistent vectors of segments, foliage clouds,
-  and terminal tips. There are no fixed-capacity pools.
+- Tree data tells the botanical story directly: a trunk contains its segments,
+  possible branch sites, and tip; a crown contains branches, foliage, and terminal
+  tips; the pot records where the tree meets the container.
 - Rasterization produces a sparse coordinate map containing only occupied
   semantic cells rather than allocating a full character grid.
 - Random state is threaded explicitly through generation, so a seed and style
@@ -41,9 +42,9 @@ changes the underlying branch structure.
 ## Architecture
 
 ```text
-seed + style + config ---> model/growth ---> tree geometry
+seed + style + config ---> pot -> trunk -> crown
                                                 |
-theme -----------------> model/raster ---> sparse semantic cells
+theme -----------------> place trunk -> crown -> pot
                                                 |
 time + wind -----------> render/cells ---> visible frame glyphs
                                           /        |        \
@@ -54,9 +55,9 @@ time + wind -----------> render/cells ---> visible frame glyphs
 src/bonsai/
 |-- model/
 |   |-- config.clj       style parameters, settings, and validation
-|   |-- growth.clj       seeded trunk and recursive branch geometry
-|   |-- raster.clj       geometry-to-sparse-cell projection
-|   `-- core.clj         world lifecycle and interactive transitions
+|   |-- growth.clj       calculate the pot, trunk, and crown
+|   |-- raster.clj       place the trunk, crown, and pot onto cells
+|   `-- core.clj         readable construction and world-update story
 |-- render/
 |   |-- cells.clj        growth reveal and deterministic leaf rustle
 |   |-- ascii.clj        headless text renderer

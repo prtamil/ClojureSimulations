@@ -1,194 +1,337 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.model.growth
-  "Seeded generation of renderer-independent bonsai geometry."
+  "Calculate the pot, trunk, and crown of a bonsai tree."
   (:require
    [bonsai.model.config :as config]
    [bonsai.utility.random :as random]))
 
-(defn- add-segment [tree segment]
-  (update tree :segments conj segment))
+;; Tree data
+;;
+;; These values document the complete geometry shape. Calculation functions
+;; fill them with ordinary maps and vectors; there are no hidden objects.
 
-(defn- add-foliage [tree foliage]
-  (update tree :foliage conj foliage))
+(def empty-pot
+  {:top-row nil})
 
-(defn- add-tip [tree tip]
-  (update tree :tips conj tip))
+(def empty-trunk
+  {:segments []
+   :branch-sites []
+   :tip nil})
 
-(defn- rotate-direction [[x y] angle]
+(def empty-crown
+  {:branches []
+   :foliage []
+   :tips []})
+
+(def empty-tree
+  {:trunk empty-trunk
+   :crown empty-crown})
+
+;; Individual geometry values look like this:
+;;
+;; segment      {:start [x y] :end [x y] :depth 0}
+;; branch site  {:position [x y] :fraction 0.5}
+;; foliage      {:center [x y] :radius 3.0 :depth 6}
+;; tip          {:position [x y] :depth 6}
+
+(def ^:private crown-seed-mask 0xC0FFEE)
+
+(defn- make-segment
+  [start end depth]
+  {:start start
+   :end end
+   :depth depth})
+
+(defn- make-branch-site
+  [position fraction]
+  {:position position
+   :fraction fraction})
+
+(defn- make-tip
+  [position depth]
+  {:position position
+   :depth depth})
+
+(defn- make-foliage
+  [center radius depth]
+  {:center center
+   :radius radius
+   :depth depth})
+
+;; Random choices
+
+(defn- random-unit
+  "Return [updated-crown-state number-between-zero-and-one]."
+  [crown-state]
+  (let [[random-state number]
+        (random/unit (:random-state crown-state))]
+    [(assoc crown-state :random-state random-state) number]))
+
+(defn- random-between
+  "Return [updated-crown-state number-between-low-and-high]."
+  [crown-state low high]
+  (let [[random-state number]
+        (random/between (:random-state crown-state) low high)]
+    [(assoc crown-state :random-state random-state) number]))
+
+;; Trunk calculation
+
+(defn- calculate-trunk-height
+  [{:keys [config style]} pot]
+  (let [requested (* (:top-row pot) (:trunk-height-frac style))
+        maximum (dec (double (:top-row pot)))
+        minimum (get-in config [:tree :min-trunk-height])]
+    (-> requested
+        (min maximum)
+        (max minimum))))
+
+(defn- calculate-trunk-segments
+  [{:keys [config]} height]
+  (let [{:keys [trunk-segments-per-cell
+                trunk-segments-min
+                trunk-segments-max]} (:tree config)]
+    (-> (* height trunk-segments-per-cell)
+        int
+        (max trunk-segments-min)
+        (min trunk-segments-max))))
+
+(defn- point-on-trunk
+  "Return [next-random-state position] for one trunk sample."
+  [{:keys [config style style-key]}
+   random-state
+   {:keys [center-x fraction height pot-row row]}]
+  (case style-key
+    :chokkan
+    (let [[random-state wobble]
+          (random/between random-state -0.3 0.3)]
+      [random-state [(+ center-x wobble) row]])
+
+    :moyogi
+    [random-state
+     [(+ center-x
+         (* (:trunk-curve-amp style)
+            (Math/sin (* 2.0 Math/PI
+                         (:trunk-curve-waves style)
+                         fraction))))
+      row]]
+
+    :shakan
+    [random-state
+     [(+ center-x (* (:trunk-lean style) fraction height))
+      row]]
+
+    :kengai
+    (let [apex (get-in config [:tree :kengai-apex-frac])]
+      (if (< fraction apex)
+        [random-state [center-x row]]
+        (let [cascade (/ (- fraction apex) (- 1.0 apex))]
+          [random-state
+           [(+ center-x
+               (* 6.0 (Math/sin (* cascade Math/PI 0.6)) 1.5))
+            (+ (- pot-row (* apex height))
+               (* cascade 6.0))]])))
+
+    ;; Bunjin / literati.
+    [random-state
+     [(+ center-x
+         (* (:trunk-curve-amp style)
+            (Math/sin (+ (* 2.0 Math/PI
+                            (:trunk-curve-waves style)
+                            fraction)
+                         0.5))))
+      row]]))
+
+;; Crown calculation
+
+(defn- turn
+  [[x y] angle]
   (let [cosine (Math/cos angle)
         sine (Math/sin angle)]
     [(- (* x cosine) (* y sine))
      (+ (* x sine) (* y cosine))]))
 
+(defn- end-of-branch
+  [{:keys [config]} {:keys [start direction length]}]
+  (let [[x y] start
+        [direction-x direction-y] direction
+        cell-aspect (get-in config [:tree :cell-aspect])]
+    [(+ x (* direction-x length))
+     (+ y (/ (* direction-y length) cell-aspect))]))
+
+(defn- branch-complete?
+  [{:keys [config style]} {:keys [length depth]}]
+  (or (< length (get-in config [:tree :min-branch-length]))
+      (> depth (:max-depth style))))
+
+(defn- add-foliage-at-tip
+  [crown-state {:keys [style]} {:keys [start depth]}]
+  (let [[crown-state size] (random-unit crown-state)
+        radius (* (:foliage-size style)
+                  (+ 0.6 (* size 0.6)))]
+    (-> crown-state
+        (update-in [:crown :tips] conj
+                   (make-tip start depth))
+        (update-in [:crown :foliage] conj
+                   (make-foliage start radius depth)))))
+
+(defn- choose-child-count
+  [crown-state {:keys [style]} depth]
+  (let [[crown-state fork-chance] (random-unit crown-state)
+        enough-depth? (< depth (dec (:max-depth style)))
+        fork? (and enough-depth?
+                   (< fork-chance (:branch-density style)))]
+    [crown-state (if fork? 2 1)]))
+
+(defn- choose-child-direction
+  [crown-state direction depth child-number child-count]
+  (let [forking? (= child-count 2)
+        [crown-state bend-size]
+        (if forking?
+          (random-between crown-state 0.50 0.95)
+          (random-between crown-state -0.40 0.40))
+        side (if (zero? child-number) -1.0 1.0)
+        bend (if forking? (* side bend-size) bend-size)
+        [next-x raw-next-y] (turn direction bend)
+        ;; Established branches gently seek upward.
+        next-y (if (and (pos? depth) (> raw-next-y -0.1))
+                 (- raw-next-y 0.2)
+                 raw-next-y)]
+    [crown-state [next-x next-y]]))
+
 (declare grow-branch)
 
 (defn- grow-children
-  [tree rng origin direction length depth style simulation-config child-count]
-  (loop [child-number 0
-         tree tree
-         rng rng]
-    (if (= child-number child-count)
-      [tree rng]
-      (let [[rng bend-size]
-            (if (= child-count 1)
-              (random/between rng -0.40 0.40)
-              (random/between rng 0.50 0.95))
-            bend (if (= child-count 1)
-                   bend-size
-                   (* (if (zero? child-number) -1.0 1.0) bend-size))
-            [next-x raw-next-y] (rotate-direction direction bend)
-            ;; Side branches gently seek upward instead of crossing downward.
-            next-y (if (and (pos? depth) (> raw-next-y -0.1))
-                     (- raw-next-y 0.2)
-                     raw-next-y)
-            next-length (* length
-                           (get-in simulation-config
-                                   [:tree :branch-length-factor]))
-            [tree rng]
-            (grow-branch tree rng origin [next-x next-y] next-length
-                         (inc depth) style simulation-config)]
-        (recur (inc child-number) tree rng)))))
+  [crown-state settings branch child-count]
+  (reduce
+   (fn [crown-state child-number]
+     (let [{:keys [direction length depth]} branch
+           [crown-state direction]
+           (choose-child-direction crown-state direction depth
+                                   child-number child-count)
+           child {:start (end-of-branch settings branch)
+                  :direction direction
+                  :length (* length
+                             (get-in settings
+                                     [:config :tree :branch-length-factor]))
+                  :depth (inc depth)}]
+       (grow-branch crown-state settings child)))
+   crown-state
+   (range child-count)))
 
 (defn- grow-branch
-  "Grow one branch and recursively continue or fork at its endpoint."
-  [tree rng [x y] [direction-x direction-y :as direction]
-   length depth style simulation-config]
-  (let [{:keys [cell-aspect min-branch-length]} (:tree simulation-config)
-        max-depth (:max-depth style)]
-    (if (or (< length min-branch-length) (> depth max-depth))
-      (let [tree (add-tip tree {:x x :y y :depth depth})
-            [rng radius-scale] (random/unit rng)
-            radius (* (:foliage-size style)
-                      (+ 0.6 (* radius-scale 0.6)))]
-        [(add-foliage tree
-                      {:cx x :cy y :radius radius :depth-at-tip depth})
-         rng])
-      (let [end [(+ x (* direction-x length))
-                 (+ y (/ (* direction-y length) cell-aspect))]
-            tree (add-segment tree
-                              {:x0 x :y0 y
-                               :x1 (first end) :y1 (second end)
-                               :depth depth})
-            [rng fork-roll] (random/unit rng)
-            child-count (if (and (< fork-roll (:branch-density style))
-                                 (< depth (dec max-depth)))
-                          2
-                          1)]
-        (grow-children tree rng end direction length depth style
-                       simulation-config child-count)))))
+  "Continue, fork, or finish one branch."
+  [crown-state settings {:keys [start depth] :as branch}]
+  (if (branch-complete? settings branch)
+    (add-foliage-at-tip crown-state settings branch)
+    (let [end (end-of-branch settings branch)
+          crown-state
+          (update-in crown-state [:crown :branches] conj
+                     (make-segment start end depth))
+          [crown-state child-count]
+          (choose-child-count crown-state settings depth)]
+      (grow-children crown-state settings branch child-count))))
 
-(defn- pot-top-row [row-count]
-  (let [pot-height (if (>= row-count 18) 4 3)
-        candidate (- row-count pot-height 1)]
-    (if (< candidate 5) (dec row-count) candidate)))
+(defn- inside-branch-area?
+  [{:keys [config]} fraction]
+  (let [[bottom top] (get-in config [:tree :branch-band])]
+    (< bottom fraction top)))
 
-(defn- trunk-point
-  "Return [next-rng [x y]] for one point on the selected silhouette."
-  [rng style-key style center-x fraction trunk-height pot-top y
-   simulation-config]
-  (case style-key
-    :chokkan
-    (let [[rng wobble] (random/between rng -0.3 0.3)]
-      [rng [(+ center-x wobble) y]])
+(defn- make-side-branch
+  [crown-state {:keys [style]} {:keys [position fraction]}]
+  (let [[crown-state side-choice] (random-unit crown-state)
+        [crown-state angle-size] (random-between crown-state 0.7 1.2)
+        side (if (< side-choice 0.5) -1.0 1.0)
+        angle (* side angle-size)]
+    [crown-state
+     {:start position
+      :direction [(Math/sin angle)
+                  (- (Math/abs (Math/cos angle)))]
+      :length (* (:branch-length style)
+                 (- 1.0 (* fraction 0.5)))
+      :depth 1}]))
 
-    :moyogi
-    [rng [(+ center-x
-             (* (:trunk-curve-amp style)
-                (Math/sin (* 2.0 Math/PI
-                             (:trunk-curve-waves style)
-                             fraction))))
-          y]]
+(defn- try-growing-side-branch
+  [crown-state settings branch-site]
+  (if-not (inside-branch-area? settings (:fraction branch-site))
+    crown-state
+    (let [[crown-state chance] (random-unit crown-state)]
+      (if (>= chance (get-in settings [:style :branch-density]))
+        crown-state
+        (let [[crown-state branch]
+              (make-side-branch crown-state settings branch-site)]
+          (grow-branch crown-state settings branch))))))
 
-    :shakan
-    [rng [(+ center-x (* (:trunk-lean style) fraction trunk-height)) y]]
+(defn- add-top-foliage
+  [crown-state {:keys [style style-key]} position]
+  (let [[x y] position
+        cascade? (= :kengai style-key)
+        center [x (if cascade? y (- y 0.5))]
+        radius (* (:foliage-size style)
+                  (if cascade? 1.2 1.4))
+        depth (:max-depth style)]
+    (-> crown-state
+        (update-in [:crown :tips] conj
+                   (make-tip position depth))
+        (update-in [:crown :foliage] conj
+                   (make-foliage center radius depth)))))
 
-    :kengai
-    (let [apex (get-in simulation-config [:tree :kengai-apex-frac])]
-      (if (< fraction apex)
-        [rng [center-x y]]
-        (let [cascade-fraction (/ (- fraction apex) (- 1.0 apex))]
-          [rng
-           [(+ center-x
-               (* 6.0 (Math/sin (* cascade-fraction Math/PI 0.6)) 1.5))
-            (+ (- pot-top (* apex trunk-height)) (* cascade-fraction 6.0))]])))
+;; Public calculation story
 
-    ;; Bunjin / literati.
-    [rng [(+ center-x
-             (* (:trunk-curve-amp style)
-                (Math/sin (+ (* 2.0 Math/PI
-                                (:trunk-curve-waves style)
-                                fraction)
-                             0.5))))
-          y]]))
+(defn calculate-pot
+  "Calculate where the pot meets the tree."
+  [{:keys [config]}]
+  (let [rows (config/grid-height config)
+        pot-height (if (>= rows 18) 4 3)
+        preferred-top (- rows pot-height 1)]
+    {:top-row (if (< preferred-top 5)
+                (dec rows)
+                preferred-top)}))
 
-(defn- maybe-grow-side-branch
-  [tree rng origin fraction style simulation-config]
-  (let [[band-low band-high] (get-in simulation-config [:tree :branch-band])]
-    (if (or (<= fraction band-low) (>= fraction band-high))
-      [tree rng]
-      (let [[rng sprout-roll] (random/unit rng)]
-        (if (>= sprout-roll (:branch-density style))
-          [tree rng]
-          (let [[rng side-roll] (random/unit rng)
-                [rng angle-size] (random/between rng 0.7 1.2)
-                angle (* (if (< side-roll 0.5) -1.0 1.0) angle-size)
-                direction [(Math/sin angle)
-                           (- (Math/abs (Math/cos angle)))]
-                length (* (:branch-length style)
-                          (- 1.0 (* fraction 0.5)))]
-            (grow-branch tree rng origin direction length 1 style
-                         simulation-config)))))))
-
-(defn- add-crown [tree style-key style [tip-x tip-y]]
-  (-> tree
-      (add-tip {:x tip-x :y tip-y :depth (:max-depth style)})
-      (add-foliage
-       {:cx tip-x
-        :cy (if (= :kengai style-key) tip-y (- tip-y 0.5))
-        :radius (* (:foliage-size style)
-                   (if (= :kengai style-key) 1.2 1.4))
-        :depth-at-tip (:max-depth style)})))
-
-(defn grow-tree
-  "Generate deterministic geometry from config, seed, and style.
-
-  Theme is intentionally absent: seasons change presentation, not botany."
-  [simulation-config seed style-key]
-  (let [style (config/style style-key)
-        column-count (config/grid-width simulation-config)
-        row-count (config/grid-height simulation-config)
-        pot-top (pot-top-row row-count)
-        requested-height (* pot-top (:trunk-height-frac style))
-        trunk-height (-> requested-height
-                         (min (dec (double pot-top)))
-                         (max (get-in simulation-config
-                                      [:tree :min-trunk-height])))
-        center-x (* column-count 0.5)
-        segments-per-cell (get-in simulation-config
-                                  [:tree :trunk-segments-per-cell])
-        minimum-segments (get-in simulation-config [:tree :trunk-segments-min])
-        maximum-segments (get-in simulation-config [:tree :trunk-segments-max])
-        segment-count (-> (* trunk-height segments-per-cell)
-                          int
-                          (max minimum-segments)
-                          (min maximum-segments))]
+(defn calculate-trunk
+  "Calculate the main trunk and its possible branch sites."
+  [{:keys [config seed] :as settings} pot]
+  (let [height (calculate-trunk-height settings pot)
+        segment-count (calculate-trunk-segments settings height)
+        center-x (* 0.5 (config/grid-width config))
+        pot-row (:top-row pot)
+        base [center-x (double pot-row)]
+        first-trunk (assoc empty-trunk
+                           :branch-sites [(make-branch-site base 0.0)]
+                           :tip base)]
     (loop [point-number 1
-           tree {:segments [] :foliage [] :tips []}
-           rng (random/u32 seed)
-           previous [center-x (double pot-top)]]
+           random-state (random/u32 seed)
+           trunk first-trunk]
       (if (> point-number segment-count)
-        {:tree (add-crown tree style-key style previous)
-         :pot-top pot-top}
+        trunk
         (let [fraction (/ (double point-number) segment-count)
-              y (- pot-top (* fraction trunk-height))
-              [rng point] (trunk-point rng style-key style center-x fraction
-                                       trunk-height pot-top y
-                                       simulation-config)
-              tree (add-segment tree
-                                {:x0 (first previous) :y0 (second previous)
-                                 :x1 (first point) :y1 (second point)
-                                 :depth 0})
-              [tree rng]
-              (maybe-grow-side-branch tree rng point fraction style
-                                      simulation-config)]
-          (recur (inc point-number) tree rng point))))))
+              row (- pot-row (* fraction height))
+              sample {:center-x center-x
+                      :fraction fraction
+                      :height height
+                      :pot-row pot-row
+                      :row row}
+              [random-state point]
+              (point-on-trunk settings random-state sample)
+              previous (:tip trunk)
+              trunk (-> trunk
+                        (update :segments conj
+                                (make-segment previous point 0))
+                        (update :branch-sites conj
+                                (make-branch-site point fraction))
+                        (assoc :tip point))]
+          (recur (inc point-number) random-state trunk))))))
+
+(defn calculate-crown
+  "Grow branches and foliage from the trunk branch sites."
+  [{:keys [seed] :as settings} trunk]
+  (let [first-state
+        {:random-state (random/u32
+                        (bit-xor (long seed) crown-seed-mask))
+         :crown empty-crown}
+        with-branches
+        (reduce #(try-growing-side-branch %1 settings %2)
+                first-state
+                (:branch-sites trunk))
+        complete-crown
+        (add-top-foliage with-branches settings (:tip trunk))]
+    (:crown complete-crown)))

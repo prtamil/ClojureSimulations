@@ -1,6 +1,6 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.core
-  "Immutable lifecycle for a generated tree and its falling leaves."
+  "The complete, pure story of constructing and animating a leaf-fall world."
   (:require
    [leaf-fall.model.config :as config]
    [leaf-fall.model.growth :as growth]
@@ -10,34 +10,72 @@
 
 (def default-seed 2026)
 
-(defn phase-name [world]
-  (name (:phase world)))
+;; Tree construction
+
+(defn- construction-settings
+  [world]
+  {:config (:config world)
+   :seed (:seed world)})
+
+(defn calculate-tree
+  "Calculate trunk and crown geometry for a world."
+  [world]
+  (let [settings (construction-settings world)
+        trunk (growth/calculate-trunk settings)
+        crown (growth/calculate-crown settings trunk)]
+    {:trunk trunk
+     :crown crown}))
+
+(defn place-tree
+  "Place tree geometry and scatter its leaf templates."
+  [world]
+  (let [scene (-> raster/empty-scene
+                  (raster/place-trunk world)
+                  (raster/place-crown world)
+                  (raster/scatter-leaves world))]
+    (merge world scene)))
+
+(defn construct-tree
+  "Calculate and place a complete tree."
+  [world]
+  (-> world
+      (assoc :tree (calculate-tree world))
+      place-tree))
 
 (defn cell-at
-  "Return one static bark cell from the world's sparse raster."
   [world row column]
-  (raster/cell-at (:config world) (:cells world) row column))
+  (raster/cell-at world row column))
 
-(defn- install-tree [world seed cycle]
-  (let [seed (random/u32 seed)
-        tree (growth/grow-tree (:config world) seed)
-        {:keys [cells leaves]} (raster/bake-tree (:config world) tree seed)]
-    (assoc world
-           :seed seed
-           :cycle cycle
-           :tree tree
-           :cells cells
-           :leaves leaves
-           :falling-leaves []
-           :phase :display
-           :phase-elapsed 0.0)))
+;; World and cycle creation
+
+(defn- new-world
+  [simulation-config]
+  (merge
+   {:config simulation-config
+    :seed nil
+    :cycle 0
+    :tree growth/empty-tree
+    :falling-leaves []
+    :phase :display
+    :phase-elapsed 0.0
+    :tick 0
+    :elapsed-seconds 0.0
+    :paused? false
+    :sim-fps (get-in simulation-config [:clock :simulation-fps :initial])}
+   raster/empty-scene))
+
+(defn- start-tree-cycle
+  [world seed cycle]
+  (-> world
+      (assoc :seed (random/u32 seed)
+             :cycle cycle)
+      construct-tree
+      (assoc :falling-leaves []
+             :phase :display
+             :phase-elapsed 0.0)))
 
 (defn initial-world
-  "Create a complete deterministic leaf-fall world.
-
-  (initial-world)                 ; defaults
-  (initial-world 42)              ; defaults with a repeatable tree
-  (initial-world custom-config 42)"
+  "Create a complete deterministic leaf-fall world."
   ([]
    (initial-world config/default-config default-seed))
   ([seed-or-config]
@@ -45,52 +83,56 @@
      (initial-world seed-or-config default-seed)
      (initial-world config/default-config seed-or-config)))
   ([simulation-config seed]
-   (let [simulation-config (config/validate! simulation-config)]
-     (install-tree
-      {:config simulation-config
-       :tick 0
-       :elapsed-seconds 0.0
-       :paused? false
-       :sim-fps (get-in simulation-config [:clock :simulation-fps :initial])}
-      seed
-      1))))
+   (-> simulation-config
+       config/validate!
+       new-world
+       (start-tree-cycle seed 1))))
 
 (defn new-tree
-  "Generate the next seeded variation and start its display phase."
+  "Generate the next seeded variation and begin its display phase."
   [world]
   (let [next-cycle (inc (:cycle world))
         next-seed (random/next-tree-seed (:seed world) next-cycle)]
-    (install-tree world next-seed next-cycle)))
+    (start-tree-cycle world next-seed next-cycle)))
 
-(defn toggle-paused [world]
-  (update world :paused? not))
+;; Phase lifecycle
 
-(defn adjust-sim-fps [world amount]
-  (let [{:keys [min max]} (get-in world [:config :clock :simulation-fps])]
-    (update world :sim-fps #(-> (+ % amount) (clojure.core/max min)
-                                (clojure.core/min max)))))
+(defn phase-name
+  [world]
+  (name (:phase world)))
 
-(defn- begin-fall [world]
+(defn- start-fall
+  [world]
   (assoc world
          :phase :falling
          :phase-elapsed 0.0
-         :falling-leaves (mapv leaf/start (:leaves world))))
+         :falling-leaves (mapv leaf/start (:leaf-templates world))))
 
 (defn skip-phase
-  "Move to falling immediately, or replace a tree after falling begins."
+  "Start falling immediately, or replace a tree after falling begins."
   [world]
   (case (:phase world)
-    :display (begin-fall world)
+    :display (start-fall world)
     (:falling :reset) (new-tree world)
     world))
 
-(defn- advance-falling [world seconds]
+(defn- advance-display
+  [world seconds]
+  (let [world (update world :phase-elapsed + seconds)
+        display-seconds (get-in world [:config :phase :display-seconds])]
+    (if (>= (:phase-elapsed world) display-seconds)
+      (start-fall world)
+      world)))
+
+(defn- advance-falling
+  [world seconds]
   (let [simulation-config (:config world)
         falling-leaves
-        (leaf/advance-all (:falling-leaves world)
-                          seconds
-                          (config/grid-height simulation-config)
-                          (get-in simulation-config [:fall :trail-length]))
+        (leaf/advance-leaves
+         (:falling-leaves world)
+         seconds
+         (config/grid-height simulation-config)
+         (get-in simulation-config [:fall :trail-length]))
         world (-> world
                   (assoc :falling-leaves falling-leaves)
                   (update :phase-elapsed + seconds))]
@@ -98,31 +140,33 @@
       (assoc world :phase :reset :phase-elapsed 0.0)
       world)))
 
-(defn- advance-one [world seconds]
-  (let [world (-> world
-                  (update :tick inc)
-                  (update :elapsed-seconds + seconds))]
-    (case (:phase world)
-      :display
-      (let [world (update world :phase-elapsed + seconds)]
-        (if (>= (:phase-elapsed world)
-                (get-in world [:config :phase :display-seconds]))
-          (begin-fall world)
-          world))
-
-      :falling
-      (advance-falling world seconds)
-
-      :reset
-      (let [world (update world :phase-elapsed + seconds)]
-        (if (>= (:phase-elapsed world)
-                (get-in world [:config :phase :reset-seconds]))
-          (new-tree world)
-          world))
-
+(defn- advance-reset
+  [world seconds]
+  (let [world (update world :phase-elapsed + seconds)
+        reset-seconds (get-in world [:config :phase :reset-seconds])]
+    (if (>= (:phase-elapsed world) reset-seconds)
+      (new-tree world)
       world)))
 
-(defn- validate-step! [tick-count seconds-per-tick]
+(defn- advance-phase
+  [world seconds]
+  (case (:phase world)
+    :display (advance-display world seconds)
+    :falling (advance-falling world seconds)
+    :reset (advance-reset world seconds)
+    world))
+
+(defn- advance-one-step
+  [world seconds]
+  (-> world
+      (update :tick inc)
+      (update :elapsed-seconds + seconds)
+      (advance-phase seconds)))
+
+;; Time
+
+(defn- validate-step!
+  [tick-count seconds-per-tick]
   (when-not (nat-int? tick-count)
     (throw (ex-info "Tick count must be a non-negative integer"
                     {:tick-count tick-count})))
@@ -133,7 +177,7 @@
                     {:dt seconds-per-tick}))))
 
 (defn update-world-steps
-  "Advance a batch of fixed-duration ticks through the complete phase cycle."
+  "Advance several fixed-duration ticks through the phase cycle."
   [world tick-count seconds-per-tick]
   (validate-step! tick-count seconds-per-tick)
   (if (or (:paused? world) (zero? tick-count))
@@ -142,7 +186,8 @@
            remaining tick-count]
       (if (zero? remaining)
         world
-        (recur (advance-one world seconds-per-tick) (dec remaining))))))
+        (recur (advance-one-step world seconds-per-tick)
+               (dec remaining))))))
 
 (defn update-world
   ([world]
@@ -150,17 +195,33 @@
   ([world seconds-per-tick]
    (update-world-steps world 1 seconds-per-tick)))
 
-(defn active-leaf-count [world]
+;; User controls
+
+(defn- clamp
+  [value minimum maximum]
+  (min maximum (max minimum value)))
+
+(defn toggle-paused
+  [world]
+  (update world :paused? not))
+
+(defn adjust-sim-fps
+  [world amount]
+  (let [{:keys [min max]} (get-in world [:config :clock :simulation-fps])]
+    (update world :sim-fps #(clamp (+ % amount) min max))))
+
+(defn active-leaf-count
+  [world]
   (case (:phase world)
-    :display (count (:leaves world))
+    :display (count (:leaf-templates world))
     :falling (count (:falling-leaves world))
     0))
 
 (comment
-  (def tree (initial-world 42))
-  (select-keys tree [:seed :cycle :phase :tick])
-  (count (:leaves tree))
-  (def falling (skip-phase tree))
+  (def world (initial-world 42))
+  (select-keys world [:seed :cycle :phase :tick])
+  (count (:leaf-templates world))
+  (def falling (skip-phase world))
   (def later (update-world-steps falling 120 (/ 1.0 60.0)))
   (select-keys later [:phase :tick])
-  (= tree (initial-world 42)))
+  (= world (initial-world 42)))

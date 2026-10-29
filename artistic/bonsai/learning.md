@@ -1,175 +1,192 @@
 # Bonsai model reading guide
 
-The program is easiest to understand as three pure transformations followed
-by renderer adapters:
+The model is a sequence of pure data transformations:
 
-```text
-seed + style -> tree geometry -> semantic cells -> visible glyphs
-```
+    world -> calculate pot -> calculate trunk -> calculate crown
+          -> place trunk -> place crown -> place pot -> completed world
 
-Each arrow accepts data and returns data. Windows, atoms, sleeping, keyboard
-events, and drawing APIs stay outside these transformations.
+Each function receives immutable data and returns new immutable data. Window
+management, keyboard events, atoms, sleeping, and drawing APIs remain outside
+the model.
 
-## 1. Tree geometry
+## 1. Start with construct-tree
 
-Start with `bonsai.model.growth/grow-tree`:
+The main story lives in bonsai.model.core:
 
-```clojure
-(require '[bonsai.model.config :as config]
-         '[bonsai.model.growth :as growth])
+    (defn calculate-tree [world]
+      (let [context (construction-context world)
+            pot (growth/calculate-pot context)
+            trunk (growth/calculate-trunk context pot)
+            crown (growth/calculate-crown context trunk)]
+        {:pot pot
+         :tree {:trunk trunk
+                :crown crown}}))
 
-(def generated
-  (growth/grow-tree config/default-config 42 :moyogi))
-```
+    (defn place-tree [world]
+      (assoc world :cells
+             (-> {}
+                 (raster/place-trunk world)
+                 (raster/place-crown world)
+                 (raster/place-pot world))))
 
-The result contains the pot boundary and a tree:
+    (defn construct-tree [world]
+      (let [{:keys [pot tree]} (calculate-tree world)]
+        (-> world
+            (assoc :pot pot :tree tree)
+            place-tree)))
 
-```clojure
-{:pot-top 37
- :tree {:segments [...]
-        :foliage [...]
-        :tips [...]}}
-```
+calculate-tree creates renderer-independent geometry. place-tree projects
+existing geometry into character cells for the selected season.
 
-A segment is renderer-independent line geometry:
+## 2. Read the data as a story
 
-```clojure
-{:x0 48.0 :y0 37.0
- :x1 48.7 :y1 36.2
- :depth 0}
-```
+A completed world contains explicit pot, trunk, and crown values:
 
-Foliage is an ellipse-like cloud centered on a terminal branch:
+    {:pot {:top-row 37}
 
-```clojure
-{:cx 35.4 :cy 17.8
- :radius 2.7
- :depth-at-tip 6}
-```
+     :tree
+     {:trunk
+      {:segments [...]
+       :branch-sites [{:position [48.0 37.0] :fraction 0.0}
+                      ...]
+       :tip [45.2 12.9]}
 
-Tips remain explicit so a bare Winter presentation can place snow without
-reconstructing or changing the tree.
+      :crown
+      {:branches [...]
+       :foliage [...]
+       :tips [...]}}
 
-### Trunk generation
+     :cells {...}}
 
-The selected style supplies a height fraction and silhouette parameters.
-`grow-tree` walks from the pot upward through a bounded number of samples.
-Each sample adds one trunk segment and may sprout a side branch inside the
-configured branch band.
+The collections have one clear purpose:
 
-The five styles alter only the trunk path and branching parameters:
+- Trunk segments draw the main silhouette.
+- Branch sites are possible attachment positions along the trunk.
+- The trunk tip is where the apex foliage grows.
+- Crown branches contain every side-branch segment.
+- Foliage values describe ellipse-like leaf clouds.
+- Crown tips let Winter place snow without changing tree geometry.
 
-- Chokkan adds small seeded horizontal wobble.
+## 3. Tree calculation
+
+bonsai.model.growth exposes three public calculations:
+
+    (def context
+      {:config config/default-config
+       :seed 42
+       :style-key :moyogi
+       :style (config/style :moyogi)})
+
+    (def pot (growth/calculate-pot context))
+    (def trunk (growth/calculate-trunk context pot))
+    (def crown (growth/calculate-crown context trunk))
+
+### Trunk
+
+calculate-trunk starts at the pot, samples the selected silhouette from bottom
+to top, and joins consecutive points with segments.
+
+- Chokkan is upright with a small seeded wobble.
 - Moyogi follows a sine curve.
 - Shakan leans steadily.
 - Kengai rises briefly and then cascades.
-- Bunjin grows a tall, sparse literati trunk.
+- Bunjin forms a tall, sparse literati silhouette.
 
-### Recursive branches
+### Crown
 
-`grow-branch` is bounded by two domain rules:
+calculate-crown visits the calculated branch sites. Sites inside the
+configured branch band may sprout a side branch. A branch either continues,
+forks, or ends in foliage.
 
-- stop when a branch is shorter than `:min-branch-length`;
-- stop after the style's `:max-depth`.
+Recursive branching stops when the branch becomes too short or reaches the
+style maximum depth. Random state stays explicit and local to crown
+calculation, so the same seed and style always produce equal values.
 
-At a stopping point it records a tip and a foliage cloud. Otherwise it adds a
-segment, makes a seeded continue-or-fork decision, shortens the child branch,
-and recurs. Persistent vectors grow naturally; no storage-capacity checks are
-part of the botanical algorithm.
+The trunk and crown use separate deterministic random streams. Changing crown
+rules therefore cannot accidentally change the trunk silhouette.
 
-## 2. Semantic cells
+## 4. Placement
 
-`bonsai.model.raster/bake-tree` projects geometry into character cells:
+bonsai.model.raster exposes the three placement stages:
 
-```clojure
-(require '[bonsai.model.raster :as raster]
-         '[bonsai.utility.theme :as theme])
+    (def cells
+      (-> {}
+          (raster/place-trunk world)
+          (raster/place-crown world)
+          (raster/place-pot world)))
 
-(def spring-cells
-  (raster/bake-tree config/default-config
-                    (:tree generated)
-                    (:pot-top generated)
-                    (first theme/themes)
-                    42))
-```
+- place-trunk rasterizes the main trunk segments.
+- place-crown places branches, foliage, and optional Winter snow.
+- place-pot runs last so the pot remains visually in front.
 
-The result is a sparse map. Only occupied coordinates exist:
+The result is a sparse coordinate map containing only occupied cells:
 
-```clojure
-{[36 48] {:row 36 :column 48
-          :glyph \H :role :trunk-dark :color-index 0}
- ...}
-```
+    {[36 48] {:row 36
+              :column 48
+              :glyph \H
+              :role :trunk-dark
+              :color-index 0}
+     ...}
 
-Rasterization uses four passes:
+Low-level details such as Bresenham line traversal, foliage ellipses, bounds
+checking, and glyph selection are private helpers. They do not interrupt the
+public placement story.
 
-1. Paint branch segments with Bresenham line traversal.
-2. Paint soft-edged foliage ellipses unless the theme is bare.
-3. Paint snow at terminal tips when the theme supplies a snow glyph.
-4. Paint the pot last so it remains visually in front.
+## 5. World changes
 
-The sparse map gives constant-time coordinate lookup for ASCII rendering and
-direct iteration for Lanterna and Quil. It also makes blank space implicit.
+The user actions in bonsai.model.core describe their effects directly:
 
-## 3. Visible frame glyphs
+    (defn cycle-style [world direction]
+      (-> world
+          (select-style direction)
+          restart-growth
+          construct-tree))
 
-`bonsai.render.cells` derives the glyph visible in one animation frame.
+    (defn cycle-theme [world direction]
+      (-> world
+          (select-theme direction)
+          place-tree))
 
-- Growth progress reveals bark upward from the pot.
-- Foliage cells appear later with seeded per-cell timing jitter.
-- Wind may swap a leaf glyph using a coordinate/time hash.
-- The same world value always produces the same visible glyphs.
+The important invariant is:
 
-These decisions are presentation policy, so they do not live in the world
-or the tree-generation model.
-
-## 4. World orchestration
-
-`bonsai.model.core` owns user-facing state:
-
-```clojure
-{:seed 42
- :style-index 1
- :theme-index 0
- :wind 1
- :growth-progress 1.0
- :tree {...}
- :cells {...}}
-```
-
-The important rebuild rules are:
-
-| Change | Geometry | Semantic cells |
+| Change | Recalculate tree? | Place cells again? |
 | --- | --- | --- |
-| Seed | regenerate | rebuild |
-| Style | regenerate | rebuild |
-| Theme | preserve | rebuild |
-| Wind | preserve | preserve |
-| Time step | preserve | preserve |
-| Growth replay | preserve | preserve |
+| Seed | yes | yes |
+| Style | yes | yes |
+| Theme | no | yes |
+| Wind | no | no |
+| Time step | no | no |
+| Replay growth | no | no |
 
-That separation is the central invariant of the design: botany is determined
-by seed and style; season and animation determine presentation.
+## 6. Animation
 
-## 5. Suggested REPL path
+Tree geometry does not change every frame. A time step only advances the clock
+and growth progress:
 
-```clojure
-(require '[bonsai.model.core :as model]
-         '[bonsai.render.ascii :as ascii]
-         '[bonsai.render.cells :as cells])
+    (-> world
+        (advance-clock tick-count elapsed-seconds)
+        (advance-growth elapsed-seconds))
 
-(def world (model/initial-world 42))
-(select-keys world [:seed :style-index :theme-index :wind])
-(count (get-in world [:tree :segments]))
-(count (:cells world))
-(ascii/render world)
+bonsai.render.cells uses that progress to reveal the already placed cells and
+uses wind to select frame-specific leaf glyphs.
 
-(def winter (model/cycle-theme world 3))
-(= (:tree world) (:tree winter)) ; true
-(not= (:cells world) (:cells winter)) ; true
+## 7. REPL path
 
-(def growing (model/replay-growth world))
-(count (cells/visible-cells growing))
-(def later (model/update-world-steps growing 30 (/ 1.0 30.0)))
-(count (cells/visible-cells later))
-```
+    (require '[bonsai.model.core :as model]
+             '[bonsai.render.ascii :as ascii])
+
+    (def world (model/initial-world 42))
+    (keys (:tree world))
+    (count (get-in world [:tree :trunk :segments]))
+    (count (get-in world [:tree :crown :branches]))
+    (ascii/render world)
+
+    ;; A season changes cells, not geometry.
+    (def winter (model/cycle-theme world 3))
+    (= (:tree world) (:tree winter))       ; true
+    (not= (:cells world) (:cells winter))  ; true
+
+    ;; A style creates new geometry and restarts its reveal.
+    (def shakan (model/cycle-style world 1))
+    (model/current-style-key shakan)       ; :shakan
+    (:growth-progress shakan)              ; 0.0

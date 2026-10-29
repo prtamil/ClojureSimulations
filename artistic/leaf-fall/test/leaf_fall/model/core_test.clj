@@ -29,7 +29,7 @@
     (is (= :display (:phase world)))
     (is (= 1 (:cycle world)))
     (is (map? (:cells world)))
-    (is (pos? (count (:leaves world))))
+    (is (pos? (count (:leaf-templates world))))
     (is (pos? (count (cells/visible-cells world))))))
 
 (deftest lifecycle-visits-falling-reset-and-next-tree
@@ -38,12 +38,16 @@
         resetting (advance-until falling #(= :reset (:phase %)) 1000)
         next-tree (model/update-world-steps resetting 6 0.01)]
     (is (= :falling (:phase falling)))
-    (is (= (count (:leaves display)) (count (:falling-leaves falling))))
+    (is (= (count (:leaf-templates display))
+           (count (:falling-leaves falling))))
+    (is (= (:tree display) (:tree falling)))
+    (is (= (:cells display) (:cells falling)))
     (is (= :reset (:phase resetting)))
     (is (empty? (cells/visible-cells resetting)))
     (is (= :display (:phase next-tree)))
     (is (= 2 (:cycle next-tree)))
-    (is (not= (:seed display) (:seed next-tree)))))
+    (is (not= (:seed display) (:seed next-tree)))
+    (is (not= (:tree display) (:tree next-tree)))))
 
 (deftest falling-leaves-produce-heads-and-trails
   (let [world (-> (model/initial-world quick-config 19)

@@ -106,7 +106,7 @@
 (defn- draw-hud! [world]
   (let [hud-height (render-setting world :hud-height)
         footer-height (render-setting world :footer-height)
-        total-leaves (count (:leaves world))]
+        total-leaves (count (:leaf-templates world))]
     (fill! (render-setting world :panel-background))
     (q/rect 0 0 (q/width) hud-height)
     (q/rect 0 (- (q/height) footer-height) (q/width) footer-height)

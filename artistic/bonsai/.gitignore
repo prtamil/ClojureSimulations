@@ -3,3 +3,4 @@
 /.lsp/.cache/
 /target/
 *.log
+/prompt.md

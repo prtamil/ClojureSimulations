@@ -89,8 +89,9 @@
                          "%,d canopy sites")
                     (:name style) (:description style) (:name active-theme)
                     (:seed world)
-                    (count (get-in world [:tree :segments]))
-                    (count (get-in world [:tree :foliage])))
+                    (+ (count (get-in world [:tree :trunk :segments]))
+                       (count (get-in world [:tree :crown :branches])))
+                    (count (get-in world [:tree :crown :foliage])))
             15 37)
     (q/text (format "%d Hz    wind %d    tick %,d%s%s"
                     (:sim-fps world) (:wind world) (:tick world)

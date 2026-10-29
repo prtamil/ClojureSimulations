@@ -5,15 +5,18 @@
    [leaf-fall.model.config :as config]
    [leaf-fall.model.leaf :as leaf]))
 
-(defn- template-cell [{:keys [origin glyph]}]
-  {:row (first origin)
-   :column (second origin)
+(defn- leaf-cell [position glyph]
+  {:row (first position)
+   :column (second position)
    :glyph glyph
    :role :leaf})
 
+(defn- template-cell [{:keys [position glyph]}]
+  (leaf-cell position glyph))
+
 (defn- falling-cells [world particle]
   (if (leaf/waiting? particle)
-    [(template-cell particle)]
+    [(leaf-cell (:origin particle) (:glyph particle))]
     (let [head-row (leaf/head-row particle)
           origin-row (first (:origin particle))
           row-count (config/grid-height (:config world))
@@ -22,7 +25,7 @@
             (comp
              (map (fn [offset]
                     {:row (- head-row offset)
-                     :column (:column particle)
+                      :column (second (:position particle))
                      :glyph (:glyph particle)
                      :role (if (zero? offset) :fall-head :fall-trail)}))
              (filter (fn [{:keys [row]}]
@@ -36,7 +39,7 @@
     :reset []
     :display (into (vec (vals (:cells world)))
                    (map template-cell)
-                   (:leaves world))
+                    (:leaf-templates world))
     :falling (into (vec (vals (:cells world)))
                    (mapcat (partial falling-cells world))
                    (:falling-leaves world))
