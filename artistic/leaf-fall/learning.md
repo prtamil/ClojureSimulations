@@ -5,8 +5,8 @@ The model is easiest to understand as two stories:
     construct:
       calculate trunk
       -> calculate crown
-      -> place trunk
-      -> place crown
+      -> rasterize trunk
+      -> rasterize crown
       -> scatter leaf templates
 
     animate:
@@ -30,7 +30,7 @@ The construction story is visible at the top of leaf-fall.model.core:
         {:trunk trunk
          :crown crown}))
 
-    (defn place-tree [world]
+    (defn rasterize-tree [world]
       (let [scene (-> raster/empty-scene
                       (raster/place-trunk world)
                       (raster/place-crown world)
@@ -40,18 +40,24 @@ The construction story is visible at the top of leaf-fall.model.core:
     (defn construct-tree [world]
       (-> world
           (assoc :tree (calculate-tree world))
-          place-tree))
+          rasterize-tree))
 
-calculate-tree creates renderer-independent geometry. place-tree creates
-semantic bark cells and immutable leaf templates from that geometry.
+calculate-tree creates renderer-independent geometry. rasterize-tree creates
+actual discrete bark cells and immutable leaf templates from that geometry.
 
 ## 2. Read the world as domain data
 
 A completed display world contains:
 
-    {:seed 42
+    {:config {...}
+     :seed 42
      :cycle 1
      :phase :display
+
+     :clock {:tick 0
+             :elapsed-seconds 0.0
+             :paused? false
+             :simulation-fps 60}
 
      :tree
      {:trunk
@@ -68,10 +74,7 @@ A completed display world contains:
      :cells {...}
      :leaf-templates [...]
      :falling-leaves []
-
-     :phase-elapsed 0.0
-     :tick 0
-     :elapsed-seconds 0.0}
+     :phase-elapsed 0.0}
 
 The empty versions of these structures are executable values:
 
@@ -79,7 +82,9 @@ The empty versions of these structures are executable values:
     growth/empty-crown
     growth/empty-tree
     raster/empty-scene
-    leaf/empty-particle
+
+There is deliberately no `empty-falling-leaf`: it is a short dynamic value
+created completely from a validated leaf template, not persistent world shape.
 
 Individual values use small, visible shapes:
 
@@ -146,7 +151,7 @@ is calculated from a trunk.
 Random state is explicit and deterministic. The refactor preserves the
 original draw order, so the same seed produces exactly the same tree.
 
-## 4. Place the scene
+## 4. Rasterize the scene
 
 leaf-fall.model.raster begins with the complete projected scene:
 
@@ -188,8 +193,14 @@ current position using rows per second:
 
     distance = speed * active-seconds
 
-The renderer derives the visible head and trail cells from the particle. The
-model removes a particle only after its complete trail has left the grid.
+The shared cell projection derives the visible head and trail cells from each
+falling leaf. The model removes a falling leaf only after its complete trail
+has left the grid.
+
+The major boundaries each protect different rules: `growth` owns recursive
+continuous geometry, `raster` owns discrete line/ellipse placement and leaf
+scattering, `leaf` owns delayed motion shared by lifecycle and projection, and
+`render.cells` owns the grid-cell visibility rules shared by every renderer.
 
 ## 6. Follow the phase lifecycle
 
@@ -206,9 +217,9 @@ The important invariants are:
 | Change | Tree geometry | Bark cells | Leaf state |
 | --- | --- | --- | --- |
 | Time during display | preserve | preserve | templates stay fixed |
-| Start falling | preserve | preserve | templates become particles |
-| Time while falling | preserve | preserve | particles move |
-| Enter reset | preserve | hidden by renderer | particles are empty |
+| Start falling | preserve | preserve | templates become falling leaves |
+| Time while falling | preserve | preserve | falling leaves move |
+| Enter reset | preserve | hidden by renderer | falling leaves are empty |
 | Start next cycle | recalculate | replace | new templates |
 | Pause | preserve | preserve | everything freezes |
 
@@ -238,13 +249,13 @@ the invalid path and value.
     (count (:leaf-templates display))
     (ascii/render display)
 
-    ;; Falling changes particles, not the tree.
+    ;; Falling changes leaves, not the tree.
     (def falling (model/skip-phase display))
     (= (:tree display) (:tree falling))   ; true
     (= (:cells display) (:cells falling)) ; true
 
     (def later
-      (model/update-world-steps falling 120 (/ 1.0 60.0)))
+      (model/advance-world-steps falling 120 (/ 1.0 60.0)))
     (ascii/render later)
 
     ;; Seeded construction remains structurally repeatable.

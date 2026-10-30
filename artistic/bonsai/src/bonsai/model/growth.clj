@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.model.growth
-  "Calculate the pot, trunk, and crown of a bonsai tree."
+  "Calculate the continuous geometry of a bonsai tree.
+
+  WHY: seeded trunk sampling and recursive crown growth are substantial
+  geometry algorithms independent of any renderer or character grid.
+  DATA: empty-pot/tree document persistent geometry; segments, foliage, and
+  tips use the ordinary map shapes documented below.
+  OPERATIONS: calculate pot, trunk, and crown geometry.
+  BOUNDARY: world lifecycle, discrete cells, themes, and drawing stay out."
   (:require
    [bonsai.model.config :as config]
    [bonsai.utility.random :as random]))

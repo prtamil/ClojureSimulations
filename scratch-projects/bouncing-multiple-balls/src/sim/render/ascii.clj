@@ -1,30 +1,10 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-;;
-;; ASCII LEVEL GUIDE
-;; -----------------
-;; Use this adapter before Quil: STATE -> STRING -> INSPECT -> ASSERT.
 (ns sim.render.ascii
+  "Project a world to deterministic text without advancing its physics."
   (:require
    [clojure.string :as str]
    [sim.model.config :as config]
    [sim.utility.theme :as theme]))
-
-(defn empty-grid
-  ([] (empty-grid config/default-config))
-  ([simulation-config]
-   (vec (repeat (config/grid-height simulation-config)
-                (vec (repeat (config/grid-width simulation-config) \.))))))
-
-(defn place-balls [grid balls]
-  (reduce
-   (fn [result {:keys [x y]}]
-     (let [row (int (Math/floor (double y)))
-           column (int (Math/floor (double x)))]
-       (update-in result [row column]
-                  (fn [current]
-                    (if (= \. current) \o \*)))))
-   grid
-   balls))
 
 (defn- preview-cell [world columns rows {:keys [x y]}]
   (let [simulation-config (:config world)
@@ -52,12 +32,12 @@
                           (:balls world)))
            header (format (str "tick:%d  time:%.2fs  balls:%d  speed:x%.2f  "
                                "theme:%s%s")
-                          (:tick world)
-                          (:elapsed-seconds world)
+                          (get-in world [:clock :tick])
+                          (get-in world [:clock :elapsed-seconds])
                           (count (:balls world))
-                          (:speed-mult world)
+                          (:speed-multiplier world)
                           (:name (theme/current-theme world))
-                          (if (:paused? world) "  PAUSED" ""))
+                          (if (get-in world [:clock :paused?]) "  PAUSED" ""))
            lines (for [y (range rows)]
                    (apply str
                           (for [x (range columns)
@@ -83,7 +63,7 @@
   (ascii/render before)
 
   (def after
-    (model/update-world-steps before 30 (/ 1.0 60.0)))
+    (model/advance-world-steps before 30 (/ 1.0 60.0)))
   (ascii/render after)
 
   ;; Pure strings are easier to compare and assert than captured stdout.
@@ -100,11 +80,4 @@
   (def themed-world (theme/cycle-theme after 1))
   (assert (str/includes? (ascii/render-string themed-world) "theme:MATRIX"))
 
-  ;; Keep render-string pure, printing in render only, and collision rules in
-  ;; sim.model.core. Add ASCII evidence and tests before adding graphical behavior.
-
-  (require '[clojure.test :as test]
-           '[sim.model.core-test]
-           :reload)
-  (test/run-tests 'sim.model.core-test)
   )

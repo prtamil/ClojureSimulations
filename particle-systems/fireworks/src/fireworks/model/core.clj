@@ -1,23 +1,49 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns fireworks.model.core
-  "Pure orchestration for an immutable fireworks world.
+  "Own the immutable lifecycle of one fireworks show.
 
-  The world contains only active domain values. Rocket and spark transitions
-  live in focused namespaces; renderers consume a separate cell projection."
+  WHY: construction, clock, show membership, controls, and advancement form one
+  readable world workflow. DATA: empty-clock/show/world document persistent
+  runtime shape. OPERATIONS: construct, advance, reset, and change controls.
+  BOUNDARY: firework owns stage transitions; spark owns burst physics;
+  configuration, projection, rendering, and runtime mutation stay outside."
   (:require
    [fireworks.model.config :as config]
-   [fireworks.model.rocket :as rocket]
+   [fireworks.model.firework :as firework]
    [fireworks.utility.random :as random]
    [fireworks.utility.theme :as theme]))
 
 (def default-seed 2026)
 
-(defn rocket-count [world]
-  (count (:rockets world)))
+(def empty-clock
+  {:tick 0
+   :elapsed-seconds 0.0
+   :paused? false
+   :simulation-fps 0})
 
-(defn- new-show [simulation-config rocket-count]
-  {:rockets (rocket/initial-rockets simulation-config rocket-count)
-   :next-rocket-id rocket-count})
+(def empty-show
+  {:fireworks []
+   :next-id 0})
+
+(def empty-world
+  {:config nil
+   :seed 0
+   :random-state 0
+   :theme-index 0
+   :clock empty-clock
+   :show empty-show})
+
+(defn firework-count [world]
+  (count (get-in world [:show :fireworks])))
+
+(defn- start-clock [simulation-config]
+  (assoc empty-clock
+         :simulation-fps
+         (get-in simulation-config [:clock :simulation-fps :initial])))
+
+(defn- construct-show [simulation-config firework-count]
+  {:fireworks (firework/make-fireworks simulation-config firework-count)
+   :next-id firework-count})
 
 (defn initial-world
   "Create a deterministic world from validated config and an explicit seed."
@@ -29,110 +55,122 @@
      (initial-world config/default-config seed-or-config)))
   ([simulation-config seed]
    (let [simulation-config (config/validate! simulation-config)
-         rocket-count (get-in simulation-config [:rockets :count :initial])]
-     (merge
-      {:config simulation-config
-       :seed (random/u32 seed)
-       :rng-state (random/u32 seed)
-       :tick 0
-       :elapsed-seconds 0.0
-       :paused? false
-       :theme-index 0
-       :sim-fps (get-in simulation-config [:clock :simulation-fps :initial])}
-      (new-show simulation-config rocket-count)))))
+         seed (random/u32 seed)
+         firework-count (get-in simulation-config [:rockets :count :initial])]
+     (assoc empty-world
+            :config simulation-config
+            :seed seed
+            :random-state seed
+            :clock (start-clock simulation-config)
+            :show (construct-show simulation-config firework-count)))))
 
-(defn- validate-step! [tick-count dt]
-  (when-not (nat-int? tick-count)
-    (throw (ex-info "Tick count must be a non-negative integer"
-                    {:tick-count tick-count})))
+(defn- validate-step! [step-count dt]
+  (when-not (nat-int? step-count)
+    (throw (ex-info "Step count must be a non-negative integer"
+                    {:step-count step-count})))
   (when-not (and (number? dt)
                  (Double/isFinite (double dt))
                  (pos? dt))
-    (throw (ex-info "Fixed-step duration must be positive and finite"
+    (throw (ex-info "Step duration must be positive and finite"
                     {:dt dt}))))
 
-(defn- advance-rockets [simulation-config rng dt rockets]
-  (reduce
-   (fn [[rng advanced] current]
-     (let [[rng next-rocket]
-           (rocket/advance simulation-config rng dt current)]
-       [rng (conj advanced next-rocket)]))
-   [rng []]
-   rockets))
+(defn- advance-clock [world dt]
+  (-> world
+      (update-in [:clock :tick] inc)
+      (update-in [:clock :elapsed-seconds] + dt)))
+
+(defn- advance-show [world dt]
+  (let [[random-state fireworks]
+        (firework/advance-fireworks (:config world)
+                                    (:random-state world)
+                                    dt
+                                    (get-in world [:show :fireworks]))]
+    (-> world
+        (assoc :random-state random-state)
+        (assoc-in [:show :fireworks] fireworks))))
 
 (defn- advance-once [world dt]
-  (let [[rng rockets]
-        (advance-rockets (:config world) (:rng-state world) dt
-                         (:rockets world))]
-    (-> world
-        (assoc :rng-state rng :rockets rockets)
-        (update :tick inc)
-        (update :elapsed-seconds + dt))))
+  (-> world
+      (advance-show dt)
+      (advance-clock dt)))
 
-(defn update-world-steps
-  "Advance a running world through fixed-duration simulation steps."
-  [world tick-count dt]
-  (validate-step! tick-count dt)
-  (if (or (:paused? world) (zero? tick-count))
+(defn advance-world-steps
+  "Advance a running show through a number of fixed-duration steps."
+  [world step-count dt]
+  (validate-step! step-count dt)
+  (if (or (get-in world [:clock :paused?]) (zero? step-count))
     world
     (loop [world world
-           remaining tick-count]
-      (if (zero? remaining)
+           steps-left step-count]
+      (if (zero? steps-left)
         world
-        (recur (advance-once world dt) (dec remaining))))))
+        (recur (advance-once world dt) (dec steps-left))))))
 
-(defn update-world
+(defn advance-world
+  "Advance a running show by one step."
   ([world]
-   (update-world world (/ 1.0 (:sim-fps world))))
+   (advance-world world (/ 1.0 (get-in world [:clock :simulation-fps]))))
   ([world dt]
-   (update-world-steps world 1 dt)))
+   (advance-world-steps world 1 dt)))
 
 (defn toggle-paused [world]
-  (update world :paused? not))
+  (update-in world [:clock :paused?] not))
 
-(defn adjust-sim-fps [world amount]
+(defn change-simulation-speed [world amount]
   (let [{:keys [min max]} (get-in world [:config :clock :simulation-fps])]
-    (update world :sim-fps #(clojure.core/min max
-                                              (clojure.core/max min (+ % amount))))))
+    (update-in world [:clock :simulation-fps]
+               #(clojure.core/min max
+                                  (clojure.core/max min (+ % amount))))))
 
 (defn cycle-theme [world direction]
   (update world :theme-index #(theme/cycle-index % direction)))
 
-(defn- add-rocket [world]
-  (let [id (:next-rocket-id world)
+(defn- add-firework [world]
+  (let [id (get-in world [:show :next-id])
         delay (get-in world [:config :rockets :new-launch-delay-seconds])]
     (-> world
-        (update :rockets conj (rocket/waiting id delay))
-        (update :next-rocket-id inc))))
+        (update-in [:show :fireworks]
+                   conj
+                   (firework/wait-before-launch id delay))
+        (update-in [:show :next-id] inc))))
 
-(defn adjust-rocket-count
-  "Grow or shrink the vector of active rockets within configured bounds."
+(defn- add-fireworks [world amount]
+  (loop [world world
+         remaining amount]
+    (if (zero? remaining)
+      world
+      (recur (add-firework world) (dec remaining)))))
+
+(defn change-firework-count
+  "Add or remove fireworks within the configured limits."
   [world amount]
   (let [{:keys [min max]} (get-in world [:config :rockets :count])
-        current (rocket-count world)
+        current (firework-count world)
         target (clojure.core/min max
                                  (clojure.core/max min (+ current amount)))]
     (cond
       (> target current)
-      (nth (iterate add-rocket world) (- target current))
+      (add-fireworks world (- target current))
 
       (< target current)
-      (update world :rockets #(vec (take target %)))
+      (update-in world [:show :fireworks] #(vec (take target %)))
 
       :else world)))
 
-(defn reset-show
+(defn restart-show
   "Restart from the original seed while preserving interactive settings."
   [world]
-  (merge world
-         {:rng-state (:seed world)
-          :tick 0
-          :elapsed-seconds 0.0
-          :paused? false}
-         (new-show (:config world) (rocket-count world))))
+  (-> world
+      (assoc :random-state (:seed world))
+      (assoc :clock (assoc (:clock world)
+                           :tick 0
+                           :elapsed-seconds 0.0
+                           :paused? false))
+      (assoc :show (construct-show (:config world)
+                                   (firework-count world)))))
 
 (defn resize-world
-  "Resize and restart scene geometry while preserving runtime preferences."
+  "Reconstruct the show for a new grid while preserving runtime preferences."
   [world width height]
   (let [width (max 4 (int width))
         height (max 4 (int height))]
@@ -143,5 +181,7 @@
                                   (assoc-in [:grid :width] width)
                                   (assoc-in [:grid :height] height)
                                   config/validate!)]
-        (merge (assoc world :config simulation-config)
-               (new-show simulation-config (rocket-count world)))))))
+        (-> world
+            (assoc :config simulation-config)
+            (assoc :show (construct-show simulation-config
+                                         (firework-count world))))))))

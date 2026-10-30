@@ -40,7 +40,7 @@
 
 (deftest seeded-display-and-falling-frames-match-their-snapshots
   (let [display (model/initial-world 42)
-        falling (model/update-world-steps
+        falling (model/advance-world-steps
                  (model/skip-phase display)
                  120
                  (/ 1.0 60.0))]

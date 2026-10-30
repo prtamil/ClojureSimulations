@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.collision
-  "Pairwise separation and elastic collision impulses.")
+  "Own pairwise separation and elastic collision impulses.
+
+  WHY: mass-aware overlap correction and impulse conservation are independent
+  physics rules that would obscure world orchestration.
+  DATA: receives and returns ball maps; retains no state.
+  OPERATIONS: resolve one pair or every unique pair in a collection.
+  BOUNDARY: spawning, wall motion, time, iteration policy, and rendering remain
+  outside this namespace.")
 
 (def ^:private epsilon 1.0e-12)
 

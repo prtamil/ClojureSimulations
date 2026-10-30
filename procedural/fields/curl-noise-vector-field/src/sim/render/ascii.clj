@@ -1,9 +1,10 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.render.ascii
-  "Pure, headless rendering of semantic curl-noise cells."
+  "Pure, headless rendering of a projected curl-noise scene."
   (:require
    [clojure.string :as str]
    [sim.model.config :as config]
+   [sim.render.projection :as projection]
    [sim.utility.theme :as theme]))
 
 (defn density-glyph
@@ -33,16 +34,15 @@
       (pos? (* vx vy)) \\
       :else \/)))
 
-(defn- particle-preview-cells [world columns rows]
-  (when (config/particle-pattern? (:pattern world))
-    (let [simulation-config (:config world)
-          width (config/grid-width simulation-config)
-          height (config/grid-height simulation-config)]
-      (into #{}
-            (map (fn [{[x y] :position}]
-                   [(min (dec columns) (int (* x (/ columns width))))
-                    (min (dec rows) (int (* y (/ rows height))))]))
-            (:particles world)))))
+(defn- particle-preview-positions
+  [scene simulation-config columns rows]
+  (let [width (config/grid-width simulation-config)
+        height (config/grid-height simulation-config)]
+    (into #{}
+          (map (fn [{[x y] :position}]
+                 [(min (dec columns) (int (* x (/ columns width))))
+                  (min (dec rows) (int (* y (/ rows height))))]))
+          (:particles scene))))
 
 (defn- model-position [width height columns rows screen-x screen-y]
   [(min (dec width) (int (* screen-x (/ width columns))))
@@ -54,28 +54,30 @@
    (render-string world {}))
   ([world {:keys [columns rows] :or {columns 80 rows 30}}]
    (let [simulation-config (:config world)
+         scene (projection/project-world world)
          width (config/grid-width simulation-config)
          height (config/grid-height simulation-config)
          columns (min columns width)
          rows (min rows height)
-         particles (particle-preview-cells world columns rows)
+         particle-positions
+         (particle-preview-positions scene simulation-config columns rows)
          header (format "tick:%d  pattern:%s  speed:%d  drift:x%d  theme:%s%s"
-                        (:tick world)
-                        (config/pattern-name (:pattern world))
-                        (:speed world)
-                        (:drift-mult world)
+                        (get-in world [:clock :tick])
+                        (config/pattern-name (:pattern scene))
+                        (:particle-speed world)
+                        (:drift-multiplier world)
                         (:name (theme/current-theme world))
-                        (if (:paused? world) "  PAUSED" ""))
+                        (if (get-in world [:clock :paused?]) "  PAUSED" ""))
          lines
          (for [screen-y (range rows)]
            (apply str
                   (for [screen-x (range columns)]
-                    (if (contains? particles [screen-x screen-y])
+                    (if (contains? particle-positions [screen-x screen-y])
                       \@
                       (let [position (model-position width height columns rows
                                                      screen-x screen-y)
                             {:keys [intensity velocity]}
-                            (get (:cells world) position {:intensity 0.0})]
+                            (get (:samples scene) position {:intensity 0.0})]
                         (if velocity
                           (arrow-glyph simulation-config velocity)
                           (density-glyph simulation-config intensity)))))))]

@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.model.raster
-  "Place calculated tree geometry onto a sparse character canvas."
+  "Rasterize calculated tree geometry onto a sparse character grid.
+
+  WHY: Bresenham lines, foliage ellipses, overlap policy, seeded glyph choice,
+  and pot layering are shared discrete-grid rules, not tree growth rules.
+  DATA: a grid maps [row column] to the semantic cell shape documented below.
+  OPERATIONS: place trunk, crown, pot, and query a cell.
+  BOUNDARY: continuous geometry, world lifecycle, frame animation, and device
+  drawing remain outside this namespace."
   (:require
    [bonsai.model.config :as config]
    [bonsai.utility.random :as random]

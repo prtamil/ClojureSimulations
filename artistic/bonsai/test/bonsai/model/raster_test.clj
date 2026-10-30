@@ -10,7 +10,7 @@
   [cells role]
   (filter #(= role (:role %)) (vals cells)))
 
-(defn- place-tree
+(defn- rasterize-tree
   [world]
   (-> {}
       (raster/place-trunk world)
@@ -19,7 +19,7 @@
 
 (deftest rasterization-reads-as-trunk-crown-pot
   (let [world (model/initial-world 42)
-        cells (place-tree world)]
+        cells (rasterize-tree world)]
     (is (= (:cells world) cells))
     (is (< (count cells) (config/cell-count (:config world))))
     (is (every? (fn [[[row column] cell]]

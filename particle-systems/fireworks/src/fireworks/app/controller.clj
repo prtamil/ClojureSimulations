@@ -16,8 +16,8 @@
    \t :next-theme
    \T :previous-theme
    \space :toggle-pause
-   \r :reset-show
-   \R :reset-show})
+   \r :restart-show
+   \R :restart-show})
 
 (defn- normalized-key [{:keys [key raw-key]}]
   (cond
@@ -38,11 +38,11 @@
         rocket-step (get-in world [:config :rockets :count :step])]
     (case command
       :toggle-pause (model/toggle-paused world)
-      :reset-show (model/reset-show world)
+      :restart-show (model/restart-show world)
       :next-theme (model/cycle-theme world 1)
       :previous-theme (model/cycle-theme world -1)
-      :raise-sim-fps (model/adjust-sim-fps world fps-step)
-      :lower-sim-fps (model/adjust-sim-fps world (- fps-step))
-      :more-rockets (model/adjust-rocket-count world rocket-step)
-      :fewer-rockets (model/adjust-rocket-count world (- rocket-step))
+      :raise-sim-fps (model/change-simulation-speed world fps-step)
+      :lower-sim-fps (model/change-simulation-speed world (- fps-step))
+      :more-rockets (model/change-firework-count world rocket-step)
+      :fewer-rockets (model/change-firework-count world (- rocket-step))
       world)))

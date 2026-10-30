@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.leaf
-  "Pure elapsed-time motion for falling leaves.")
+  "Own pure elapsed-time motion for falling leaves.
+
+  WHY: delayed release, falling position, trail head, and completion rules are
+  shared by the phase lifecycle and renderer projection.
+  DATA: template and falling-leaf map shapes are documented below.
+  OPERATIONS: start, inspect, advance, and retire falling leaves.
+  BOUNDARY: tree construction, world phases, grid-cell projection, and drawing
+  remain outside this namespace.")
 
 ;; Leaf data
 ;;
@@ -10,13 +17,6 @@
 ;; A falling leaf keeps both its origin and current position:
 ;; {:origin [row column] :position [floating-row column]
 ;;  :glyph \* :delay-remaining 0.25 :speed 10.0}
-
-(def empty-particle
-  {:origin nil
-   :position nil
-   :glyph nil
-   :delay-remaining 0.0
-   :speed 0.0})
 
 (defn start
   "Turn an immutable leaf template into a falling leaf."

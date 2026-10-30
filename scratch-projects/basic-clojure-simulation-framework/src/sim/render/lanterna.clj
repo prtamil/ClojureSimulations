@@ -64,11 +64,11 @@
 (defn- status-text [world measured-fps]
   (format "%5.1f fps  tick:%,d  time:%.1fs  %dHz  %s%s"
           measured-fps
-          (:tick world)
-          (:elapsed-seconds world)
-          (:sim-fps world)
+          (get-in world [:clock :tick])
+          (get-in world [:clock :elapsed-seconds])
+          (get-in world [:clock :simulation-fps])
           (:name (theme/current-theme world))
-          (if (:paused? world) " PAUSED" "")))
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as surface} world {:keys [measured-fps]}]
@@ -89,7 +89,7 @@
   world)
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -108,7 +108,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

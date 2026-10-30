@@ -41,8 +41,8 @@
                           (model/active-leaf-count world)
                           (count (:leaf-templates world))
                           (:seed world)
-                          (:tick world)
-                          (if (:paused? world) "  PAUSED" ""))
+                          (get-in world [:clock :tick])
+                          (if (get-in world [:clock :paused?]) "  PAUSED" ""))
            lines (for [row (range start-row (+ start-row rows))]
                    (apply str (subvec (nth grid row)
                                       start-column

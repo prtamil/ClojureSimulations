@@ -39,6 +39,6 @@
       :reset (model/reset-world world)
       :next-theme (theme/cycle-theme world 1)
       :previous-theme (theme/cycle-theme world -1)
-      :raise-sim-fps (model/adjust-sim-fps world fps-step)
-      :lower-sim-fps (model/adjust-sim-fps world (- fps-step))
+      :raise-sim-fps (model/change-simulation-fps world fps-step)
+      :lower-sim-fps (model/change-simulation-fps world (- fps-step))
       world)))

@@ -3,7 +3,7 @@
 The model is a sequence of pure data transformations:
 
     world -> calculate pot -> calculate trunk -> calculate crown
-          -> place trunk -> place crown -> place pot -> completed world
+          -> rasterize trunk -> crown -> pot -> completed world
 
 Each function receives immutable data and returns new immutable data. Window
 management, keyboard events, atoms, sleeping, and drawing APIs remain outside
@@ -22,7 +22,7 @@ The main story lives in bonsai.model.core:
          :tree {:trunk trunk
                 :crown crown}}))
 
-    (defn place-tree [world]
+    (defn rasterize-tree [world]
       (assoc world :cells
              (-> {}
                  (raster/place-trunk world)
@@ -33,10 +33,10 @@ The main story lives in bonsai.model.core:
       (let [{:keys [pot tree]} (calculate-tree world)]
         (-> world
             (assoc :pot pot :tree tree)
-            place-tree)))
+            rasterize-tree)))
 
-calculate-tree creates renderer-independent geometry. place-tree projects
-existing geometry into character cells for the selected season.
+calculate-tree creates renderer-independent geometry. rasterize-tree converts
+existing geometry into actual discrete character-grid cells for the season.
 
 ## 2. Read the data as a story
 
@@ -57,6 +57,23 @@ A completed world contains explicit pot, trunk, and crown values:
        :tips [...]}}
 
      :cells {...}}
+
+The complete persistent world shape is visible in `empty-world`:
+
+    {:config {...}
+     :seed 2026
+     :generation 0
+     :clock {:tick 0
+             :elapsed-seconds 0.0
+             :paused? false
+             :simulation-fps 60}
+     :style-index 1
+     :theme-index 0
+     :pot {:top-row 37}
+     :tree {:trunk {...} :crown {...}}
+     :cells {...}
+     :wind 1.0
+     :growth-progress 1.0}
 
 The collections have one clear purpose:
 
@@ -132,6 +149,11 @@ Low-level details such as Bresenham line traversal, foliage ellipses, bounds
 checking, and glyph selection are private helpers. They do not interrupt the
 public placement story.
 
+These boundaries exist for distinct reasons: `growth` owns substantial
+continuous recursive geometry, `raster` owns substantial discrete-grid and
+layering rules, and `render.cells` owns the frame-specific reveal and rustle
+shared by all renderers. None owns the world clock or drawing devices.
+
 ## 5. World changes
 
 The user actions in bonsai.model.core describe their effects directly:
@@ -145,7 +167,7 @@ The user actions in bonsai.model.core describe their effects directly:
     (defn cycle-theme [world direction]
       (-> world
           (select-theme direction)
-          place-tree))
+          rasterize-tree))
 
 The important invariant is:
 

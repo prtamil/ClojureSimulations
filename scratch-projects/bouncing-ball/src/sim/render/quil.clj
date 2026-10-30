@@ -44,10 +44,10 @@
         {:keys [clock-state ticks dt]}
         (clock/advance clock-state
                        (System/nanoTime)
-                       (:sim-fps world)
+                       (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- draw-boundary! [world]
@@ -108,12 +108,12 @@
     (q/text-size 12)
     (q/text (format (str "tick %,d    time %.2fs    pos %.1f,%.1f    "
                          "vel %.1f,%.1f    speed x%.2f    %s%s")
-                    (:tick world)
-                    (:elapsed-seconds world)
+                    (get-in world [:clock :tick])
+                    (get-in world [:clock :elapsed-seconds])
                     x y vx vy
-                    (:speed-mult world)
+                    (:speed-multiplier world)
                     (:name (active-theme world))
-                    (if (:paused? world) "  [PAUSED]" ""))
+                    (if (get-in world [:clock :paused?]) "  [PAUSED]" ""))
             14 45)
     (fill! (second (:bands (active-theme world))))
     (q/text "t/T theme    r reset    space pause    +/- speed    [ / ] Hz    q quit"

@@ -14,16 +14,16 @@
     (is (= 0.1 (:time after)))
     (is (= permutation (:permutation after)))))
 
-(deftest static-views-are-semantic-cell-maps
+(deftest static-views-are-semantic-sample-maps
   (doseq [pattern [:vector :potential :curl-magnitude]]
-    (let [cells (field/sample-grid config/default-config
-                                   (field/create permutation)
-                                   pattern)]
-      (is (seq cells))
-      (is (every? (fn [[position cell]]
-                    (= position (:position cell)))
-                  cells))
-      (is (every? #(<= 0.0 (:intensity %) 1.0) (vals cells))))))
+    (let [samples (field/sample-grid config/default-config
+                                     (field/create permutation)
+                                     pattern)]
+      (is (seq samples))
+      (is (every? (fn [[position sample]]
+                    (= position (:position sample)))
+                  samples))
+      (is (every? #(<= 0.0 (:intensity %) 1.0) (vals samples))))))
 
 (deftest curl-directions-are-finite
   (doseq [warped? [false true]]

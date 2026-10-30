@@ -1,5 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-(ns fireworks.model.config)
+(ns fireworks.model.config
+  "Own adjustable fireworks settings and staged validation.
+
+  WHY: stage construction, physics, clocks, projection, and renderers need one
+  trusted settings boundary. DATA: grid, rocket, spark, clock, and render rules.
+  OPERATIONS: dimension access and named validation stages.
+  BOUNDARY: live world values and derived fireworks do not belong here.")
 
 ;; Domain values use physical units: terminal cells, seconds, and cells per
 ;; second. At the default 30 Hz these produce the same motion and fade timing
@@ -82,9 +88,7 @@
       (throw (ex-info (str "Invalid fireworks range at " path)
                       {:path path :value value})))))
 
-(defn validate!
-  "Return config unchanged, or throw ex-info describing an invalid setting."
-  [simulation-config]
+(defn- validate-values! [simulation-config]
   (doseq [[path valid? message]
           [[[:grid :width] #(and (int? %) (<= 4 %))
             "must be an integer of at least 4"]
@@ -128,31 +132,44 @@
            [[:render :hud-text] rgb-color? "must be an RGB byte vector"]
            [[:render :hint-text] rgb-color? "must be an RGB byte vector"]]]
     (check-value! simulation-config path valid? message))
+  simulation-config)
 
+(defn- validate-ranges! [simulation-config]
   (doseq [[path allow-zero?]
           [[[:rockets :relaunch-delay-seconds] true]
            [[:sparks :speed] true]
            [[:sparks :life] false]
            [[:sparks :fade-rate] false]]]
     (check-ordered-range! simulation-config path allow-zero?))
+  simulation-config)
 
+(defn- validate-count-limits! [simulation-config]
   (let [{count-min :min initial :initial count-max :max}
         (get-in simulation-config [:rockets :count])]
     (when-not (<= count-min initial count-max)
       (throw (ex-info "Invalid rocket-count range"
                       {:path [:rockets :count]
                        :values [count-min initial count-max]}))))
-
   (let [{fps-min :min initial :initial fps-max :max}
         (get-in simulation-config [:clock :simulation-fps])]
     (when-not (<= fps-min initial fps-max)
       (throw (ex-info "Invalid simulation FPS range"
                       {:path [:clock :simulation-fps]
                        :values [fps-min initial fps-max]}))))
+  simulation-config)
 
+(defn- validate-grid-limits! [simulation-config]
   (when-not (< (get-in simulation-config [:rockets :burst-ceiling])
                (grid-height simulation-config))
     (throw (ex-info "Rocket burst ceiling must fit inside the grid"
                     {:path [:rockets :burst-ceiling]})))
-
   simulation-config)
+
+(defn validate!
+  "Return config unchanged, or throw ex-info describing an invalid setting."
+  [simulation-config]
+  (-> simulation-config
+      validate-values!
+      validate-ranges!
+      validate-count-limits!
+      validate-grid-limits!))

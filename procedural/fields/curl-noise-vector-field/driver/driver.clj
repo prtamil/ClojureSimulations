@@ -21,7 +21,8 @@
   ([] (step! 1))
   ([n]
    (swap! world
-          #(model/update-world-steps % n (/ 1.0 (:sim-fps %))))
+          #(model/advance-world-steps
+            % n (/ 1.0 (get-in % [:clock :simulation-fps]))))
    (ascii/render @world)
    @world))
 
@@ -38,10 +39,10 @@
   (swap! world controller/apply-command :previous-theme))
 
 (defn pause! []
-  (swap! world assoc :paused? true))
+  (swap! world assoc-in [:clock :paused?] true))
 
 (defn resume! []
-  (swap! world assoc :paused? false))
+  (swap! world assoc-in [:clock :paused?] false))
 
 (defn start-gui! []
   (require 'sim.render.quil)

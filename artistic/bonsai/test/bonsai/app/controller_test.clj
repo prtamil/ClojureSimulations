@@ -15,7 +15,8 @@
 
 (deftest commands-transform-world-values
   (let [world (model/initial-world 42)]
-    (is (:paused? (controller/apply-command world :toggle-pause)))
+    (is (get-in (controller/apply-command world :toggle-pause)
+                [:clock :paused?]))
     (is (= :shakan
            (model/current-style-key
             (controller/apply-command world :next-style))))

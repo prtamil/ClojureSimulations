@@ -22,7 +22,7 @@
 
   ;; Pure, deterministic workflow.
   (def world-0 (model/initial-world 42))
-  (def world-1 (model/update-world world-0))
+  (def world-1 (model/advance-world world-0))
   (= world-0 (model/initial-world 42))
   (ascii/render world-1)
 
@@ -32,7 +32,7 @@
         (assoc-in [:grid :width] 48)
         (assoc-in [:grid :height] 20)))
   (def compact-world (model/initial-world compact-config 42))
-  (ascii/render (model/update-world-steps compact-world 45 (/ 1.0 30.0)))
+  (ascii/render (model/advance-world-steps compact-world 45 (/ 1.0 30.0)))
 
   (driver/start-gui!)
   (driver/start-terminal!)

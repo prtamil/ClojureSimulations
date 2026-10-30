@@ -22,9 +22,10 @@
         patterns (get-in world [:config :views :order])
         previous-pattern (controller/apply-command world :previous-pattern)
         previous-theme (controller/apply-command world :previous-theme)]
-    (is (= (last patterns) (:pattern previous-pattern)))
+    (is (= (last patterns) (get-in previous-pattern [:view :pattern])))
     (is (= :particles
-           (:pattern (controller/apply-command previous-pattern :next-pattern))))
+           (get-in (controller/apply-command previous-pattern :next-pattern)
+                   [:view :pattern])))
     (is (= (dec (count theme/themes)) (:theme-index previous-theme)))
     (is (= 0 (:theme-index
               (controller/apply-command previous-theme :next-theme))))))

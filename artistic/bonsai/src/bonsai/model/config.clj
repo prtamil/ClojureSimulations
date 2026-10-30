@@ -1,6 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.model.config
-  "Bonsai styles, simulation settings, and their validation.")
+  "Own adjustable bonsai settings and staged validation.
+
+  WHY: growth, rasterization, clocks, and renderers need one trusted settings
+  boundary. DATA: grid, tree, animation, clock, render, and style rules.
+  OPERATIONS: dimension/style lookup and named validation stages.
+  BOUNDARY: live world values and derived geometry do not belong here.")
 
 ;; Styles
 

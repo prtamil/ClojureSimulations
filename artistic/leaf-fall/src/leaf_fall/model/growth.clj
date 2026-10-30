@@ -1,6 +1,12 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.growth
-  "Calculate renderer-independent trunk and crown geometry."
+  "Calculate renderer-independent trunk and crown geometry.
+
+  WHY: seeded trunk sampling and recursive branch growth are substantial
+  continuous-geometry rules independent of a character grid.
+  DATA: empty-tree documents persistent geometry; smaller shapes appear below.
+  OPERATIONS: calculate the trunk and crown.
+  BOUNDARY: world phases, raster cells, falling motion, and drawing stay out."
   (:require
    [leaf-fall.model.config :as config]
    [leaf-fall.utility.random :as random]))

@@ -6,24 +6,27 @@
    [sim.model.config :as config]
    [sim.model.core :as model]
    [sim.model.field :as field]
-   [sim.render.ascii :as ascii]))
+   [sim.render.ascii :as ascii]
+   [sim.render.projection :as projection]))
 
 (comment
   ;; Seeded worlds make experiments repeatable.
   (def before (model/initial-world 42))
   (def after
-    (model/update-world-steps before 60 (/ 1.0 60.0)))
+    (model/advance-world-steps before 60 (/ 1.0 60.0)))
 
-  (select-keys after [:tick :pattern :speed :drift-mult :sim-fps])
+  (select-keys after [:clock :view :particle-speed :drift-multiplier])
   (model/field-time after)
   (take 3 (:particles after))
-  (take 3 (:cells after))
+  (take 3 (:trail after))
+  (take 3 (:samples (projection/project-world after)))
   (ascii/render after)
 
-  ;; View changes are pure and immediately produce their semantic cells.
-  (def vector-world (model/cycle-pattern after 1))
-  (def potential-world (model/cycle-pattern vector-world 1))
-  (map (juxt :position :velocity) (take 5 (vals (:cells vector-world))))
+  ;; View changes are pure and immediately calculate their field samples.
+  (def vector-world (model/cycle-view after 1))
+  (def potential-world (model/cycle-view vector-world 1))
+  (map (juxt :position :velocity)
+       (take 5 (vals (get-in vector-world [:view :samples]))))
   (ascii/render vector-world)
   (ascii/render potential-world)
 

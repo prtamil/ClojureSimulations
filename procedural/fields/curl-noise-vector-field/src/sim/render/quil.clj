@@ -8,6 +8,7 @@
    [sim.app.controller :as controller]
    [sim.model.core :as model]
    [sim.app.runtime :as runtime]
+   [sim.render.projection :as projection]
    [sim.utility.theme :as theme]))
 
 (def cell-size 8)
@@ -33,7 +34,7 @@
 
 (defn update-state [clock-state]
   (let [world @runtime/world
-        simulation-fps (:sim-fps world)
+        simulation-fps (get-in world [:clock :simulation-fps])
         max-delta-ns (* clock/nanoseconds-per-millisecond
                         (get-in world [:config :clock :max-frame-delta-ms]))
         {:keys [clock-state ticks dt]}
@@ -42,7 +43,7 @@
                        simulation-fps
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- set-fill! [[r g b] alpha]
@@ -51,13 +52,13 @@
 (defn- set-stroke! [[r g b] alpha]
   (q/stroke r g b alpha))
 
-(defn- draw-density-field! [world]
+(defn- draw-density-field! [world scene]
   (let [simulation-config (:config world)
         glow-threshold (get-in simulation-config [:render :glow-threshold])
         bands (:bands (active-theme world))]
     (q/no-stroke)
     (doseq [{[x y] :position intensity :intensity band :band}
-            (vals (:cells world))
+            (vals (:samples scene))
             :when (> intensity glow-threshold)]
       (let [rgb (nth bands band)
             alpha (+ 20 (* 235 intensity))]
@@ -85,7 +86,7 @@
             (- ex (* head (Math/cos (+ angle 0.55))))
             (- ey (* head (Math/sin (+ angle 0.55)))))))
 
-(defn- draw-vector-field! [world]
+(defn- draw-vector-field! [world scene]
   (let [simulation-config (:config world)
         velocity-epsilon (get-in simulation-config [:curl :velocity-epsilon])
         bands (:bands (active-theme world))]
@@ -93,28 +94,27 @@
              intensity :intensity
              band :band
              [vx vy] :velocity}
-            (vals (:cells world))]
+            (vals (:samples scene))]
       (draw-arrow! x y vx vy intensity
                    (nth bands band)
                    velocity-epsilon))))
 
-(defn- draw-particles! [world]
-  (when (config/particle-pattern? (:pattern world))
-    (let [bands (:bands (active-theme world))]
-      (q/no-stroke)
-      (doseq [{[x y] :position band :band} (:particles world)]
-        (set-fill! (nth bands band) 245)
-        (q/ellipse (+ (* x cell-size) (/ cell-size 2.0))
-                   (+ (* y cell-size) (/ cell-size 2.0))
-                   3.2 3.2)))))
+(defn- draw-particles! [world scene]
+  (let [bands (:bands (active-theme world))]
+    (q/no-stroke)
+    (doseq [{[x y] :position band :band} (:particles scene)]
+      (set-fill! (nth bands band) 245)
+      (q/ellipse (+ (* x cell-size) (/ cell-size 2.0))
+                 (+ (* y cell-size) (/ cell-size 2.0))
+                 3.2 3.2))))
 
-(defn- draw-flash! [world]
+(defn- draw-flash! [world scene]
   (let [simulation-config (:config world)
         width (config/grid-width simulation-config)
         height (config/grid-height simulation-config)
         glow-threshold (get-in simulation-config [:render :glow-threshold])
         sparkle-mask (get-in simulation-config [:flash :sparkle-mask])
-        brightness (:flash-intensity world)]
+        brightness (:flash-intensity scene)]
     (when (> brightness glow-threshold)
       (q/no-stroke)
       (set-fill! (:flash (active-theme world)) (* 210 brightness))
@@ -125,14 +125,14 @@
                 (+ (* y cell-size) 2)
                 3 3)))))
 
-(defn- draw-field! [world]
+(defn- draw-field! [world scene]
   (q/push-matrix)
   (q/translate 0 hud-height)
-  (if (= :vector (:pattern world))
-    (draw-vector-field! world)
-    (draw-density-field! world))
-  (draw-particles! world)
-  (draw-flash! world)
+  (if (= :vector (:pattern scene))
+    (draw-vector-field! world scene)
+    (draw-density-field! world scene))
+  (draw-particles! world scene)
+  (draw-flash! world scene)
   (q/pop-matrix))
 
 (defn- draw-palette! [world x y]
@@ -151,12 +151,12 @@
   (q/text-size 13)
   (q/fill 220)
   (q/text (format "%s%s    tick %,d    %d Hz    speed %d    drift x%d"
-                  (config/pattern-name (:pattern world))
-                  (if (:paused? world) "  [PAUSED]" "")
-                  (:tick world)
-                  (:sim-fps world)
-                  (:speed world)
-                  (:drift-mult world))
+                  (config/pattern-name (get-in world [:view :pattern]))
+                  (if (get-in world [:clock :paused?]) "  [PAUSED]" "")
+                  (get-in world [:clock :tick])
+                  (get-in world [:clock :simulation-fps])
+                  (:particle-speed world)
+                  (:drift-multiplier world))
           16 49)
   (q/text (str "theme " (:name (active-theme world))) 16 68)
   (draw-palette! world 132 58)
@@ -165,9 +165,10 @@
           16 (- (q/height) 11)))
 
 (defn draw [_clock-state]
-  (let [world @runtime/world]
+  (let [world @runtime/world
+        scene (projection/project-world world)]
     (q/background 4 6 12)
-    (draw-field! world)
+    (draw-field! world scene)
     (draw-hud! world)))
 
 (defn key-pressed [clock-state event]

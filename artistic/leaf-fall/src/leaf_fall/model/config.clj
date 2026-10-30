@@ -1,5 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-(ns leaf-fall.model.config)
+(ns leaf-fall.model.config
+  "Own adjustable leaf-fall settings and staged validation.
+
+  WHY: growth, rasterization, phases, clocks, and renderers need one trusted
+  settings boundary. DATA: grid, tree, fall, phase, clock, and render rules.
+  OPERATIONS: dimension access and named validation stages.
+  BOUNDARY: live world values and derived geometry do not belong here.")
 
 (def default-config
   {:grid {:width 96

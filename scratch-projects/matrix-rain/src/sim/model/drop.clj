@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.drop
-  "Seeded construction and elapsed-time evolution of rain streams."
+  "Own deterministic construction and evolution of rain streams.
+
+  WHY: spawning, glyph mutation probability, respawn, and explicit random
+  state form a substantial stream lifecycle that would obscure the world flow.
+  DATA: a drop is {:id :column :head-y :speed :glyphs}; random state is passed
+  in and returned rather than retained here.
+  OPERATIONS: spawn one/many streams and advance one/all streams.
+  BOUNDARY: world clocks, controls, visibility, and presentation remain out."
   (:require
    [sim.model.config :as config]
    [sim.utility.random :as random]))

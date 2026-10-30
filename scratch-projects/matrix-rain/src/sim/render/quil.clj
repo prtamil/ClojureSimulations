@@ -2,7 +2,7 @@
 (ns sim.render.quil
   (:require [quil.core :as q]
             [quil.middleware :as m]
-            [sim.render.ascii :as ascii]
+            [sim.model.projection :as projection]
             [sim.utility.clock :as clock]
             [sim.model.config :as config]
             [sim.app.controller :as controller]
@@ -41,9 +41,11 @@
         max-delta-ns (* clock/nanoseconds-per-millisecond
                         (get-in world [:config :clock :max-frame-delta-ms]))
         {:keys [clock-state ticks dt]}
-        (clock/advance clock-state (System/nanoTime) (:sim-fps world) max-delta-ns)]
+        (clock/advance clock-state (System/nanoTime)
+                       (get-in world [:clock :simulation-fps])
+                       max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- trail-color [world depth length]
@@ -60,12 +62,14 @@
   (let [cell-size (render-setting world :cell-size)
         hud-height (render-setting world :hud-height)]
     (q/text-size cell-size)
-    (doseq [{:keys [x y depth length glyph]} (ascii/visible-cells world)]
+    (doseq [{:keys [position depth stream-length character]}
+            (projection/visible-glyphs world)
+            :let [[x y] position]]
       (if (zero? depth)
         (fill! (:flash (active-theme world)))
-        (fill! (trail-color world depth length)
+        (fill! (trail-color world depth stream-length)
                (max 55 (- 235 (* depth 12)))))
-      (q/text (str glyph)
+      (q/text (str character)
               (+ (* x cell-size) (/ cell-size 2.0))
               (+ hud-height (* y cell-size) (/ cell-size 2.0))))))
 
@@ -91,13 +95,13 @@
     (q/text-size 12)
     (q/text (format (str "tick %,d    time %.2fs    streams %d    "
                          "speed x%.2f    %d Hz    %s%s")
-                    (:tick world)
-                    (:elapsed-seconds world)
+                    (get-in world [:clock :tick])
+                    (get-in world [:clock :elapsed-seconds])
                     (count (:drops world))
-                    (:speed-mult world)
-                    (:sim-fps world)
+                    (:speed-multiplier world)
+                    (get-in world [:clock :simulation-fps])
                     (:name (active-theme world))
-                    (if (:paused? world) "  [PAUSED]" ""))
+                    (if (get-in world [:clock :paused?]) "  [PAUSED]" ""))
             14 45)
     (fill! (second (:bands (active-theme world))))
     (q/text "t/T theme    r reset    space pause    +/- speed    [ / ] Hz    q quit"

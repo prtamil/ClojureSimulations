@@ -1,345 +1,358 @@
-# Refactoring
+# Model Refactoring Prompt
 
 Refactor the model layer of this Clojure project from first principles.
 
-Project: <PROJECT_PATH>
-Primary model directory: <MODEL_DIRECTORY>
+Project: `<PROJECT_PATH>`
 
-## Goal
+Primary model directory: `<MODEL_DIRECTORY>`
 
-Make the model read like a simple domain story that a Clojure beginner can
-follow. Preserve the project's behavior unless a structural improvement
-intentionally requires a change.
+## Objective
 
-Do not merely rename existing complicated functions or add thin wrapper
-functions. Simplify the underlying data flow, function boundaries, data
-structures, and terminology.
+Make the model read like a clear domain story that a Clojure beginner can
+follow without reconstructing behavior from scattered implementation details.
 
-Start by inspecting:
+Preserve observable behavior by default. Change behavior, output, or public
+APIs only when the improvement is intentional, justified, applied to every
+consumer, and reported explicitly.
 
-- Model namespaces
-- Configuration
-- Renderers or projections consuming model data
-- Tests and visual snapshots
-- Documentation and REPL examples
-- Every call site of the current model API
+This is an implementation task. Do not stop after reviewing the code or
+proposing a design. Complete the refactor and verify it.
 
-Run the complete test suite before editing to establish a baseline.
+Do not mistake superficial change for simplification. Renaming complicated
+functions, adding forwarding wrappers, or moving the same complexity into more
+namespaces is not sufficient. Simplify the data flow, responsibilities,
+terminology, and public story.
 
-## Core principles
+## Audit before editing
 
-### 1. Make the top-level model read like pseudocode
+Inspect the complete behavior surface:
 
-The central namespace should show the domain workflow directly.
+- Model namespaces and their public APIs
+- Runtime data shapes
+- Configuration and validation
+- Controllers and application state
+- Renderers, projections, serializers, or other model consumers
+- Tests, deterministic fixtures, and visual snapshots
+- Drivers, REPL examples, documentation, and debug displays
+- Every call site of fields or functions that may change
 
-For example:
+Preserve unrelated worktree changes.
 
-    (defn calculate-thing [world]
-      (let [part-a (calculate-part-a world)
-            part-b (calculate-part-b world part-a)]
-        {:part-a part-a
-         :part-b part-b}))
+Before editing:
 
-    (defn place-thing [world]
-      (assoc world :cells
-             (-> {}
-                 (place-part-a world)
-                 (place-part-b world)
-                 (place-container world))))
+1. Run the complete test suite.
+2. Run the normal build or compile command.
+3. Record deterministic or visual baselines when output must remain stable.
+4. Identify existing failures and distinguish them from later regressions.
+5. Find invariants, performance-sensitive paths, and compatibility constraints.
 
-    (defn construct-thing [world]
-      (let [calculated (calculate-thing world)]
-        (-> world
-            (merge calculated)
-            place-thing)))
+## Design standard
 
-Important workflows such as initialization, regeneration, theme changes, time
-advancement, and user actions should also read as small stories using thread
-macros, let expressions, and well-named pure functions.
+### 1. Make the public model read like a domain story
 
-### 2. Make runtime data explicit
+The central model namespace should expose the important workflows directly:
 
-Do not force readers to reconstruct data shapes from scattered assoc, update,
-and destructuring expressions.
+```clojure
+(defn construct-world [config seed]
+  (-> empty-world
+      (start-clock config)
+      (create-domain-values config seed)
+      prepare-current-view))
 
-Define and use visible empty data values near the model that owns them:
+(defn advance-world [world seconds]
+  (-> world
+      (advance-clock seconds)
+      (advance-domain-values seconds)
+      refresh-derived-values))
+```
 
-    (def empty-part-a
-      {:segments []
-       :attachment-sites []
-       :tip nil})
+Initialization, reset, time advancement, regeneration, view changes, and user
+actions should read as small stories composed from well-named pure functions.
+The top-level workflow should not be obscured by low-level mechanics.
 
-    (def empty-part-b
-      {:branches []
-       :foliage []
-       :tips []})
+### 2. Use the smallest justified abstraction
 
-    (def empty-model
-      {:part-a empty-part-a
-       :part-b empty-part-b})
+A domain noun does not automatically deserve a public function, record,
+protocol, or namespace. Use the smallest boundary that expresses the concept
+clearly:
 
-Initialize the world with these values so its complete shape is visible before
-calculation.
+```text
+data key -> private function -> public function -> namespace
+```
 
-Add short examples of individual dynamic values:
+Move right only when the concept has independent behavior, protects an
+invariant, serves multiple consumers, contains substantial rules or
+mathematics, or has a meaningful reason to change separately.
 
-    ;; segment         {:start [x y] :end [x y] :depth 0}
-    ;; attachment site {:position [x y] :fraction 0.5}
-    ;; foliage         {:center [x y] :radius 3.0 :depth 6}
-    ;; tip             {:position [x y] :depth 6}
+Every abstraction must answer:
 
-Prefer domain-shaped data such as:
+- `WHY`: What problem does this boundary solve?
+- `DATA`: What values does it own?
+- `OPERATIONS`: What can happen to those values?
+- `BOUNDARY`: What does it deliberately not own?
 
-    {:start [x y] :end [x y]}
+For each remaining major namespace or public boundary, capture those answers
+in a concise docstring. For a small private helper, its name, inputs, output,
+and position in the caller should make the reason obvious without a long
+explanation.
 
-over mechanically shaped data such as:
+Concepts that construct, advance, reset, and disappear together usually belong
+as ordinary data and private functions in the same lifecycle namespace.
+Separate them only when the new boundary reduces conceptual load.
 
-    {:x0 x :y0 y :x1 x :y1 y}
+Remove or inline abstractions that cannot justify themselves. Do not create one
+namespace, manager, service, protocol, record, or public API per domain noun.
 
-Use names that explain why data exists. For example, prefer branch-sites over
-generic names such as points.
+### 3. Make persistent runtime data explicit
 
-### 3. Separate calculation from placement
+A reader should be able to see the complete persistent world shape near the
+model that owns it.
 
-Calculation should produce renderer-independent domain data.
+Use visible empty values when they clarify persistent structures:
 
-Placement or projection should turn that data into cells, pixels, characters,
-or another presentation representation.
+```clojure
+(def empty-clock
+  {:tick 0
+   :paused? false})
 
-A theme or presentation change should re-place existing geometry without
-recalculating it. A seed or structural-style change may recalculate and then
-place it.
+(def empty-world
+  {:config nil
+   :clock empty-clock
+   :entities []
+   :view {:mode :default
+          :samples {}}})
+```
 
-Make this distinction explicit in function names and tests.
+Initialize from those values rather than assembling the world through
+unrelated `assoc` calls whose final shape is difficult to discover.
 
-### 4. Simplify helper functions
+Do not create ceremonial `empty-*` values for transient reductions, private
+constructor results, or every small map. Document short dynamic shapes beside
+the constructor instead:
 
-Private helpers should describe one understandable action.
+```clojure
+;; Entity {:position [x y] :velocity [dx dy] :age-seconds 0.0}
+```
 
-Prefer plain names such as:
+Prefer domain-shaped data:
 
-- make-segment
-- point-on-trunk
-- end-of-branch
-- grow-children
-- add-foliage-at-tip
-- try-growing-side-branch
-- put-cell
-- choose-line-glyph
-- draw-segment
-- draw-foliage
-- draw-pot
+```clojure
+{:start [x y] :end [x y]}
+```
 
-Avoid vague or overly technical names unless the algorithm genuinely requires
-them.
+over mechanically shaped data:
 
-Keep low-level mechanics private so they do not interrupt the public domain
-story.
+```clojure
+{:x0 x :y0 y :x1 x :y1 y}
+```
 
-Replace long positional argument lists with a clearly named context or
-settings map when several functions share the same inputs:
+Avoid parallel collections whose indexes must remain synchronized. Keep values
+that describe one domain object together unless measured performance requires a
+different representation.
 
-    {:config config
-     :seed seed
-     :style-key style-key
-     :style style}
+### 4. Separate calculation from presentation when applicable
 
-Do not turn every small function into a context-map function. Use maps only
-where they make relationships clearer.
+The model should calculate renderer-independent domain values. A projection,
+rasterization, serialization, or view layer may then translate those values
+into a representation for consumers.
 
-### 5. Keep state transformations pure
+Do not introduce a projection layer when the project has no real presentation
+boundary. When multiple renderers or consumers share visibility rules, a small
+shared projection is justified.
 
-Use immutable maps and vectors.
+Name projected values after what they represent:
 
-Randomness should remain deterministic and explicit. Given the same
-configuration, seed, and style, the result must compare structurally equal.
+- Use `glyph` for a visible character plus semantic style.
+- Use `sample` for a sampled scalar or vector value.
+- Use `scene` for the complete renderer-independent visible collection.
+- Reserve `cell` for an actual discrete grid slot, such as a terminal or raster
+  cell.
 
-If separate stages should not influence each other accidentally, derive
-independent deterministic random streams for them. For example, changing crown
-rules should not unexpectedly change the trunk.
+Avoid vague names such as `render-repr`, `item`, or `data` when a precise domain
+term exists.
 
-Avoid atoms, global mutable state, protocols, records, macros, or stateful
-random generators unless the project genuinely needs them.
+Presentation-only changes should not recalculate domain geometry or simulation
+state unless the project genuinely requires it. Make calculation and projection
+responsibilities explicit in function names and tests.
 
-### 6. Use idiomatic beginner-friendly Clojure
+### 5. Keep functions simple and domain-oriented
+
+Private helpers should perform one understandable action and use plain names.
+Low-level traversal, clipping, interpolation, and mathematical mechanics should
+remain private so they do not interrupt the public story.
 
 Prefer:
 
 - Plain maps and vectors
-- let
-- Thread-first pipelines
-- assoc
-- update
-- update-in
-- map
-- reduce
-- Small recursive functions only where recursion reflects the domain
+- `let` for naming meaningful intermediate values
+- Short thread-first pipelines for lifecycle stories
+- `assoc`, `update`, and `update-in`
+- `map`, `reduce`, and comprehensions when their intent is obvious
+- Recursion only when it reflects the domain or makes the algorithm clearer
 
-Avoid clever abstractions, unnecessary transducers, deeply nested anonymous
-functions, and excessive threading through temporary implementation details.
+Avoid:
 
-Necessary mathematical or recursive complexity may remain, but it should live
-behind simple domain functions.
+- Thin wrappers that only rename an existing complicated operation
+- Deeply nested anonymous functions
+- Excessive threading through implementation details
+- Unnecessary transducers, macros, protocols, records, or multimethods
+- Context maps passed everywhere without improving understanding
 
-### 7. Make configuration readable
+Use a context or settings map when several related functions genuinely share a
+large group of inputs. Do not turn every small positional function into a map
+API.
 
-Configuration should contain adjustable rules and parameters, not dynamic
-runtime tree or entity data.
+### 6. Keep transformations pure and randomness explicit
 
-Organize configuration by domain concepts.
+Use immutable values for model transformations. Keep atoms, I/O, sleeping,
+window operations, and other side effects at the application boundary.
 
-Refactor validation into named stages:
+Randomness must be deterministic and explicit. Given the same configuration,
+seed, inputs, and elapsed steps, the model should compare structurally equal.
+Pass random state in and return the next state with the result.
 
-    (defn validate! [config]
-      (-> config
-          validate-values!
-          validate-structural-limits!
-          validate-clock!
-          validate-animation!
-          validate-styles!))
+When independent stages should not influence each other accidentally, derive
+separate deterministic random streams. Do this only when the independence is a
+real domain requirement.
 
-Each validation stage should either return the unchanged configuration or
-throw ex-info containing a useful path and value.
+### 7. Keep configuration and validation readable
 
-### 8. Make projection data explicit
+Configuration should contain adjustable rules, limits, and presentation
+settings, not live runtime entities or derived state.
 
-At the top of the raster or projection namespace, document the representation
-it produces.
+Organize it by domain concepts. Validate it through named stages:
 
-For example:
+```clojure
+(defn validate! [config]
+  (-> config
+      validate-values!
+      validate-ranges!
+      validate-relationships!
+      validate-render-settings!))
+```
 
-    ;; A canvas maps [row column] to a semantic cell:
-    ;;
-    ;; {[row column] {:row row
-    ;;                :column column
-    ;;                :glyph character
-    ;;                :role :foliage
-    ;;                :color-index 0}}
+Every validation stage should return the unchanged configuration or throw
+`ex-info` containing a useful path and the invalid value or related values.
 
-Use a small constructor such as make-cell if it prevents repeated,
-inconsistent map literals.
+## Migration requirements
 
-The public projection API should read as a story:
+When data shapes or public functions change, update all consumers in the same
+refactor:
 
-    (-> {}
-        (place-trunk world)
-        (place-crown world)
-        (place-pot world))
+- Renderers and projections
+- Controllers and runtime state
+- Drivers and REPL helpers
+- Tests and fixtures
+- Documentation and examples
+- Debug displays, counters, and status text
+- Build entry points and namespace lists
 
-Keep clipping, line traversal, ellipse distance, character selection, and
-similar mechanics private.
+Do not leave forwarding aliases or compatibility wrappers solely to avoid
+finishing the migration unless compatibility is an explicit requirement.
 
-### 9. Preserve behavior carefully
+Search for every old field, function, and namespace after the migration. No
+stale references should remain.
 
-Before changing code:
+## Testing and behavior preservation
 
-- Run the full test suite.
-- Identify determinism tests.
-- Identify structural invariants.
-- Identify visual or character-level snapshots.
-- Find all consumers of the old data shape and API.
+Prefer tests that describe observable domain behavior and justify important
+boundaries. Do not mirror every private helper with a test or create one test
+namespace per noun.
 
-After each structural step:
+Test the relevant guarantees for the project, including:
 
-- Compile the affected namespaces.
-- Run focused tests.
-- Run the full suite.
-- Inspect representative rendered output.
+- Persistent runtime shape
+- Construction and lifecycle stages
+- Determinism for equal seeds and inputs
+- Valid values for every supported mode or style
+- Finite coordinates and bounded values
+- Pause, reset, resize, and control behavior
+- Presentation-only changes preserving calculated state
+- Structural changes recalculating the correct state
+- Projection shape and visibility rules, when applicable
+- Long-running invariants
+- Visual or serialized output snapshots
 
-Do not update snapshots simply to silence failures. First inspect the output
-and confirm that any visual change is intentional.
+When an unjustified namespace is removed, retain its meaningful contracts as
+tests of the public world story.
 
-When the refactor is intended to preserve appearance, all visual snapshots
-should remain unchanged.
+Do not update a snapshot merely to silence a failure. Inspect the new output
+first and update the snapshot only when the visual or serialized change is
+intentional.
 
-### 10. Update all consumers
+After each meaningful structural step:
 
-When changing the model shape, update:
+1. Compile the affected namespaces.
+2. Run focused tests.
+3. Run the full suite at stable checkpoints.
+4. Inspect representative output when presentation is involved.
 
-- Renderers
-- Controllers
-- REPL code
-- Tests
-- Snapshot tests
-- Documentation
-- Debug displays and counters
-- Any code using old nested paths
+## Documentation requirements
 
-Search for every old field and function name after the migration. No stale
-references should remain.
+Update the README, reading guide, and REPL examples to describe the model that
+actually exists after the refactor.
 
-### 11. Improve tests around the new story
+Document:
 
-Tests should verify:
-
-- Empty values document the complete data shape.
-- Construction follows the intended stages.
-- The same seed produces structurally equal results.
-- Every supported style produces valid geometry.
-- All coordinates are finite.
-- Presentation changes preserve geometry.
-- Structural changes regenerate geometry.
-- Placement produces valid semantic cells.
-- Visual snapshots remain correct.
-
-Prefer tests that access meaningful paths such as:
-
-    [:tree :trunk :segments]
-    [:tree :trunk :branch-sites]
-    [:tree :crown :branches]
-    [:tree :crown :foliage]
-    [:tree :crown :tips]
-    [:pot :top-row]
-
-### 12. Update the reading guide
-
-Document the new model starting with its public story, followed by its data.
-
-The guide should explain:
-
-    world
-      -> calculate part A
-      -> calculate part B
-      -> place part A
-      -> place part B
-      -> completed world
-
-Include:
-
-- The complete world or model shape
-- Examples of individual geometry values
-- Calculation versus placement
+- The top-level construction and advancement story
+- The complete persistent runtime shape
+- Examples of important dynamic values
+- Why each major abstraction exists and what it does not own
+- Which concepts remain ordinary data instead of separate namespaces
+- Calculation versus presentation, when applicable
 - Deterministic randomness
-- Which user actions recalculate data
-- Which actions only re-project it
-- A short REPL walkthrough
+- Which user actions recalculate, reset, or only re-project data
+- A short executable REPL walkthrough
 
 ## Implementation workflow
 
-1. Inspect the current architecture and call sites.
-2. Run and record the baseline tests.
-3. Propose the target data shape and public pipeline.
-4. Implement the data shape first.
-5. Refactor calculation around that shape.
-6. Refactor projection around that shape.
-7. Rewrite the central model namespace as the high-level story.
-8. Simplify configuration validation.
-9. Update consumers and tests.
-10. Inspect representative output.
-11. Update snapshots only when justified.
-12. Update documentation.
-13. Run the full test suite, build, and git diff --check.
+1. Audit the architecture, behavior surface, and call sites.
+2. Establish test, build, deterministic, and visual baselines.
+3. Group concepts by lifecycle and identify genuine independent boundaries.
+4. Define the target persistent data shape and public domain pipeline.
+5. Record `WHY`, `DATA`, `OPERATIONS`, and `BOUNDARY` for every planned major
+   abstraction.
+6. Remove or inline abstractions that do not justify themselves.
+7. Implement the persistent data shape.
+8. Refactor calculation around that shape.
+9. Add or simplify projection only when consumers require it.
+10. Rewrite the central model namespace as the high-level story.
+11. Simplify configuration validation.
+12. Migrate every consumer and remove the old API.
+13. Replace structure-mirroring tests with behavior-focused tests while
+    preserving important coverage.
+14. Inspect representative output and compare it with the baseline.
+15. Update documentation and REPL examples.
+16. Run stale-reference searches, the full test suite, the normal build, a
+    representative runtime smoke test, and `git diff --check`.
 
-Do not stop after providing recommendations. Implement the refactor and verify
-it.
+## Completion criteria
+
+The refactor is complete only when:
+
+- The central model reads as a domain story.
+- Persistent runtime data is explicit.
+- Every major abstraction has a clear reason and boundary.
+- Coupled concepts are not split into unnecessary namespaces.
+- Calculation and presentation are separated only where useful.
+- Randomness remains deterministic and explicit.
+- All consumers use the new data shape and API.
+- No stale names or compatibility leftovers remain unintentionally.
+- Tests, build, and representative runtime checks pass.
+- Required output and snapshots remain unchanged, or intentional differences
+  are documented.
+- Documentation matches the implementation.
+- `git diff --check` is clean.
 
 ## Final response
 
 Report:
 
 - The new top-level model story
-- The new runtime data shape
-- Important helper-name and responsibility changes
-- Whether output or snapshots changed
-- Test and build results
-- Any intentional compatibility-breaking API changes
+- The new persistent runtime data shape
+- Why each remaining major abstraction deserves its boundary
+- Which abstractions were removed or inlined, and why
+- Important responsibility, terminology, and API changes
+- Whether behavior, output, or snapshots changed
+- Test, build, and runtime-smoke results
+- Any intentional compatibility-breaking changes

@@ -28,8 +28,8 @@
                         (:name active-theme)
                         (:seed world)
                         (:wind world)
-                        (:tick world)
-                        (if (:paused? world) "  PAUSED" ""))
+                        (get-in world [:clock :tick])
+                        (if (get-in world [:clock :paused?]) "  PAUSED" ""))
          lines
          (for [row (range start-row (+ start-row rows))]
            (apply str

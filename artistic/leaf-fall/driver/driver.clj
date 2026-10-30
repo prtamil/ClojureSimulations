@@ -21,10 +21,10 @@
   (swap! runtime/world controller/apply-command command))
 
 (defn step!
-  ([] (swap! runtime/world model/update-world))
+  ([] (swap! runtime/world model/advance-world))
   ([tick-count]
-   (swap! runtime/world model/update-world-steps tick-count
-          (/ 1.0 (:sim-fps @runtime/world)))))
+   (swap! runtime/world model/advance-world-steps tick-count
+          (/ 1.0 (get-in @runtime/world [:clock :simulation-fps])))))
 
 (defn reset-world! []
   (reset! runtime/world (model/initial-world)))

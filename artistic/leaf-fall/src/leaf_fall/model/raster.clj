@@ -1,6 +1,12 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns leaf-fall.model.raster
-  "Place tree geometry into bark cells and immutable leaf templates."
+  "Rasterize tree geometry into bark cells and immutable leaf templates.
+
+  WHY: Bresenham lines, foliage ellipses, drawing priority, and deterministic
+  leaf scattering are shared discrete-grid rules, not growth rules.
+  DATA: empty-scene and the cell/template shapes below document its results.
+  OPERATIONS: place trunk/crown, scatter leaves, and query grid positions.
+  BOUNDARY: continuous geometry, falling motion, phases, and devices stay out."
   (:require
    [leaf-fall.model.config :as config]
    [leaf-fall.utility.random :as random]))

@@ -77,8 +77,8 @@
           (:cycle world)
           (model/active-leaf-count world)
           (count (:leaf-templates world))
-          (:sim-fps world)
-          (:tick world)))
+          (get-in world [:clock :simulation-fps])
+          (get-in world [:clock :tick])))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as surface} world {:keys [measured-fps]}]
@@ -98,7 +98,7 @@
   world)
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -115,7 +115,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

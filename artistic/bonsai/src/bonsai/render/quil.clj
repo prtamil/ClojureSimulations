@@ -41,10 +41,11 @@
         max-delta-ns (* clock/nanoseconds-per-millisecond
                         (get-in world [:config :clock :max-frame-delta-ms]))
         {:keys [clock-state ticks dt]}
-        (clock/advance clock-state (System/nanoTime) (:sim-fps world)
+        (clock/advance clock-state (System/nanoTime)
+                       (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- draw-cell! [world active-theme cell]
@@ -94,8 +95,10 @@
                     (count (get-in world [:tree :crown :foliage])))
             15 37)
     (q/text (format "%d Hz    wind %d    tick %,d%s%s"
-                    (:sim-fps world) (:wind world) (:tick world)
-                    (if (:paused? world) "    [PAUSED]" "")
+                    (get-in world [:clock :simulation-fps])
+                    (:wind world)
+                    (get-in world [:clock :tick])
+                    (if (get-in world [:clock :paused?]) "    [PAUSED]" "")
                     (if (< (:growth-progress world) 1.0)
                       (format "    growing %d%%"
                               (int (* 100 (:growth-progress world))))

@@ -1,6 +1,13 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.model.core
-  "The complete, pure story of constructing and updating a bonsai world."
+  "Own the complete, pure lifecycle of a bonsai world.
+
+  WHY: construction, time, controls, style/theme changes, and reseeding form
+  one domain story.
+  DATA: empty-world documents the complete persistent runtime shape.
+  OPERATIONS: calculate, rasterize, construct, advance, and apply user actions.
+  BOUNDARY: growth owns continuous tree geometry; raster owns discrete grid
+  placement; configuration, rendering, and runtime mutation remain outside."
   (:require
    [bonsai.model.config :as config]
    [bonsai.model.growth :as growth]
@@ -9,6 +16,25 @@
    [bonsai.utility.theme :as theme]))
 
 (def default-seed 2026)
+
+(def empty-clock
+  {:tick 0
+   :elapsed-seconds 0.0
+   :paused? false
+   :simulation-fps 0})
+
+(def empty-world
+  {:config nil
+   :seed 0
+   :generation 0
+   :clock empty-clock
+   :style-index 1
+   :theme-index 0
+   :pot growth/empty-pot
+   :tree growth/empty-tree
+   :cells {}
+   :wind 0.0
+   :growth-progress 1.0})
 
 ;; Tree construction
 
@@ -36,8 +62,8 @@
      :tree {:trunk trunk
             :crown crown}}))
 
-(defn place-tree
-  "Place existing tree geometry using the world's current theme."
+(defn rasterize-tree
+  "Convert existing geometry into themed cells at discrete grid positions."
   [world]
   (assoc world :cells
          (-> {}
@@ -51,7 +77,7 @@
   (let [{:keys [pot tree]} (calculate-tree world)]
     (-> world
         (assoc :pot pot :tree tree)
-        place-tree)))
+        rasterize-tree)))
 
 (defn cell-at
   [world row column]
@@ -61,20 +87,14 @@
 
 (defn- new-world
   [simulation-config seed]
-  {:config simulation-config
-   :seed (random/u32 seed)
-   :generation 0
-   :tick 0
-   :elapsed-seconds 0.0
-   :paused? false
-   :style-index 1
-   :theme-index 0
-   :pot growth/empty-pot
-   :tree growth/empty-tree
-   :cells {}
-   :sim-fps (get-in simulation-config [:clock :simulation-fps :initial])
-   :wind (get-in simulation-config [:animation :wind-initial])
-   :growth-progress 1.0})
+  (assoc empty-world
+         :config simulation-config
+         :seed (random/u32 seed)
+         :clock (assoc empty-clock
+                       :simulation-fps
+                       (get-in simulation-config
+                               [:clock :simulation-fps :initial]))
+         :wind (get-in simulation-config [:animation :wind-initial])))
 
 (defn initial-world
   "Create a complete deterministic bonsai world."
@@ -106,8 +126,8 @@
 (defn- advance-clock
   [world tick-count elapsed-seconds]
   (-> world
-      (update :tick + tick-count)
-      (update :elapsed-seconds + elapsed-seconds)))
+      (update-in [:clock :tick] + tick-count)
+      (update-in [:clock :elapsed-seconds] + elapsed-seconds)))
 
 (defn- advance-growth
   [world elapsed-seconds]
@@ -115,22 +135,23 @@
     (update world :growth-progress
             #(min 1.0 (+ % (/ elapsed-seconds growth-seconds))))))
 
-(defn update-world-steps
+(defn advance-world-steps
   "Advance the clock and growth animation by several fixed steps."
   [world tick-count seconds-per-tick]
   (validate-step! tick-count seconds-per-tick)
-  (if (or (:paused? world) (zero? tick-count))
+  (if (or (get-in world [:clock :paused?]) (zero? tick-count))
     world
     (let [elapsed-seconds (* tick-count (double seconds-per-tick))]
       (-> world
           (advance-clock tick-count elapsed-seconds)
           (advance-growth elapsed-seconds)))))
 
-(defn update-world
+(defn advance-world
   ([world]
-   (update-world world (/ 1.0 (:sim-fps world))))
+   (advance-world world
+                  (/ 1.0 (get-in world [:clock :simulation-fps]))))
   ([world seconds-per-tick]
-   (update-world-steps world 1 seconds-per-tick)))
+   (advance-world-steps world 1 seconds-per-tick)))
 
 ;; User actions
 
@@ -140,12 +161,13 @@
 
 (defn toggle-paused
   [world]
-  (update world :paused? not))
+  (update-in world [:clock :paused?] not))
 
-(defn adjust-sim-fps
+(defn change-simulation-fps
   [world amount]
   (let [{:keys [min max]} (get-in world [:config :clock :simulation-fps])]
-    (update world :sim-fps #(clamp (+ % amount) min max))))
+    (update-in world [:clock :simulation-fps]
+               #(clamp (+ % amount) min max))))
 
 (defn adjust-wind
   [world amount]
@@ -177,7 +199,7 @@
   [world direction]
   (-> world
       (select-theme direction)
-      place-tree))
+      rasterize-tree))
 
 (defn- choose-next-seed
   [world]

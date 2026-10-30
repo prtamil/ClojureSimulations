@@ -17,7 +17,7 @@
 
 (deftest wall-motion-preserves-the-domain
   (let [before {:id 1 :x 39.0 :y 10.0 :vx 20.0 :vy 0.0
-                :radius 0.5 :mass 0.25 :color 0}
+                :radius 0.5 :mass 0.25 :band-index 0}
         after (ball/advance config/default-config 1.0 0.2 before)]
     (is (<= (:radius after) (:x after)
             (- (config/grid-width config/default-config) (:radius after))))

@@ -41,10 +41,10 @@
         {:keys [clock-state ticks dt]}
         (clock/advance clock-state
                        (System/nanoTime)
-                       (:sim-fps world)
+                       (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- draw-particles! [world]
@@ -76,11 +76,11 @@
     (fill! (render-setting world :hud-text))
     (q/text-size 12)
     (q/text (format "tick %,d    time %.2fs    %d Hz    theme %s%s"
-                    (:tick world)
-                    (:elapsed-seconds world)
-                    (:sim-fps world)
+                    (get-in world [:clock :tick])
+                    (get-in world [:clock :elapsed-seconds])
+                    (get-in world [:clock :simulation-fps])
                     (:name (active-theme world))
-                    (if (:paused? world) "    [PAUSED]" ""))
+                    (if (get-in world [:clock :paused?]) "    [PAUSED]" ""))
             14 43)
     (fill! (second (:bands (active-theme world))))
     (q/text "t/T theme    r reset    space pause    [ / ] rate    q quit"

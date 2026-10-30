@@ -1,5 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-(ns sim.model.config)
+(ns sim.model.config
+  "Own adjustable rules and reject invalid simulation boundaries.
+
+  WHY: construction and every renderer rely on one validated configuration.
+  DATA: default-config contains rules only, never live runtime state.
+  OPERATIONS: expose grid dimensions and validate values and relationships.
+  BOUNDARY: this namespace does not construct or advance a world.")
 
 (def supported-band-count 4)
 
@@ -63,53 +69,80 @@
        (<= 0.0 (double (:y particle)))
        (< (double (:y particle)) height)))
 
+(defn- check! [config path valid? message]
+  (let [value (get-in config path)]
+    (when-not (valid? value)
+      (throw (ex-info (str "Invalid simulation configuration at " path
+                           ": " message)
+                      {:path path :value value}))))
+  config)
+
+(defn- validate-values! [config]
+  (doseq [[path valid? message]
+          [[[:grid :width] pos-int? "must be a positive integer"]
+           [[:grid :height] pos-int? "must be a positive integer"]
+           [[:clock :simulation-fps :min] pos-int?
+            "must be a positive integer"]
+           [[:clock :simulation-fps :initial] pos-int?
+            "must be a positive integer"]
+           [[:clock :simulation-fps :max] pos-int?
+            "must be a positive integer"]
+           [[:clock :simulation-fps :step] pos-int?
+            "must be a positive integer"]
+           [[:clock :render-fps] pos-int? "must be a positive integer"]
+           [[:clock :max-frame-delta-ms] pos-int?
+            "must be a positive integer"]
+           [[:render :cell-size] pos-int? "must be a positive integer"]
+           [[:render :terminal-cell-aspect] positive-number?
+            "must be a positive finite number"]
+           [[:render :hud-height] nat-int?
+            "must be a non-negative integer"]
+           [[:render :footer-height] nat-int?
+            "must be a non-negative integer"]
+           [[:render :band-count] pos-int? "must be a positive integer"]
+           [[:render :background] rgb-color? "must be an RGB vector"]
+           [[:render :hud-background] rgb-color? "must be an RGB vector"]
+           [[:render :hud-text] rgb-color? "must be an RGB vector"]]]
+    (check! config path valid? message))
+  config)
+
+(defn- validate-clock! [config]
+  (let [{:keys [min initial max]} (get-in config [:clock :simulation-fps])]
+    (when-not (<= min initial max)
+      (throw (ex-info "Invalid simulation FPS range"
+                      {:path [:clock :simulation-fps]
+                       :values [min initial max]}))))
+  config)
+
+(defn- validate-particles! [config]
+  (let [particles (get-in config [:particles :initial])
+        width (grid-width config)
+        height (grid-height config)]
+    (when-not (and (vector? particles)
+                   (seq particles)
+                   (every? #(valid-particle? width height %) particles))
+      (throw (ex-info "Initial particles must be valid and inside the grid"
+                      {:path [:particles :initial]
+                       :value particles})))
+    (when-not (= (count particles) (count (distinct (map :id particles))))
+      (throw (ex-info "Initial particle IDs must be unique"
+                      {:path [:particles :initial]
+                       :value particles}))))
+  config)
+
+(defn- validate-render-settings! [config]
+  (when-not (= supported-band-count (get-in config [:render :band-count]))
+    (throw (ex-info (str "Themes require exactly " supported-band-count
+                         " color bands")
+                    {:path [:render :band-count]
+                     :value (get-in config [:render :band-count])})))
+  config)
+
 (defn validate!
   "Return config unchanged, or throw with the path of an invalid setting."
   [config]
-  (let [checks
-        [[[:grid :width] pos-int? "must be a positive integer"]
-         [[:grid :height] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :min] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :initial] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :max] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :step] pos-int? "must be a positive integer"]
-         [[:clock :render-fps] pos-int? "must be a positive integer"]
-         [[:clock :max-frame-delta-ms] pos-int? "must be a positive integer"]
-         [[:render :cell-size] pos-int? "must be a positive integer"]
-         [[:render :terminal-cell-aspect] positive-number?
-          "must be a positive finite number"]
-         [[:render :hud-height] nat-int? "must be a non-negative integer"]
-         [[:render :footer-height] nat-int? "must be a non-negative integer"]
-         [[:render :band-count] pos-int? "must be a positive integer"]
-         [[:render :background] rgb-color? "must be an RGB vector"]
-         [[:render :hud-background] rgb-color? "must be an RGB vector"]
-         [[:render :hud-text] rgb-color? "must be an RGB vector"]]]
-    (doseq [[path valid? message] checks
-            :let [value (get-in config path)]
-            :when (not (valid? value))]
-      (throw (ex-info (str "Invalid simulation configuration at " path ": " message)
-                      {:path path :value value})))
-    (let [{:keys [min initial max]} (get-in config [:clock :simulation-fps])]
-      (when-not (<= min initial max)
-        (throw (ex-info "Invalid simulation FPS range"
-                        {:path [:clock :simulation-fps]
-                         :values [min initial max]}))))
-    (let [particles (get-in config [:particles :initial])
-          width (grid-width config)
-          height (grid-height config)]
-      (when-not (and (vector? particles)
-                     (seq particles)
-                     (every? #(valid-particle? width height %) particles))
-        (throw (ex-info "Initial particles must be valid and inside the grid"
-                        {:path [:particles :initial]
-                         :value particles})))
-      (when-not (= (count particles) (count (distinct (map :id particles))))
-        (throw (ex-info "Initial particle IDs must be unique"
-                        {:path [:particles :initial]
-                         :value particles}))))
-    (when-not (= supported-band-count (get-in config [:render :band-count]))
-      (throw (ex-info (str "Themes require exactly " supported-band-count
-                           " color bands")
-                      {:path [:render :band-count]
-                       :value (get-in config [:render :band-count])})))
-    config))
+  (-> config
+      validate-values!
+      validate-clock!
+      validate-particles!
+      validate-render-settings!))

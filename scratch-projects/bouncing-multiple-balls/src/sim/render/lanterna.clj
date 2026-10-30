@@ -48,7 +48,7 @@
         width (config/grid-width simulation-config)
         height (config/grid-height simulation-config)]
     (reduce
-     (fn [cells {:keys [x y color]}]
+     (fn [cells {:keys [x y band-index]}]
        (if-let [{:keys [column row]}
                 (terminal/project-point layout x y width height)]
          (let [index (+ column (* row window-columns))]
@@ -56,7 +56,7 @@
                   {:column column
                    :row row
                    :glyph (if (contains? cells index) \* \o)
-                   :color color}))
+                   :band-index band-index}))
          cells))
      {}
      (:balls world))))
@@ -70,9 +70,9 @@
       (terminal/draw-box! surface left top
                           (+ field-columns (* 2 border))
                           (+ field-rows (* 2 border)))
-      (doseq [[_ {:keys [column row glyph color]}]
+      (doseq [[_ {:keys [column row glyph band-index]}]
               (projected-balls world layout columns)]
-        (terminal/set-foreground! surface (nth (:bands palette) color))
+        (terminal/set-foreground! surface (nth (:bands palette) band-index))
         (terminal/set-bold! surface true)
         (terminal/put-character! surface column row glyph)))))
 
@@ -80,11 +80,11 @@
   (format "%5.1f fps  balls:%d  tick:%,d  %dHz  x%.2f  %s%s"
           measured-fps
           (count (:balls world))
-          (:tick world)
-          (:sim-fps world)
-          (:speed-mult world)
+          (get-in world [:clock :tick])
+          (get-in world [:clock :simulation-fps])
+          (:speed-multiplier world)
           (:name (theme/current-theme world))
-          (if (:paused? world) " PAUSED" "")))
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as surface} world {:keys [measured-fps]}]
@@ -106,7 +106,7 @@
   world)
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -125,7 +125,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

@@ -1,9 +1,16 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.ball
-  "Pure construction and radius-aware motion for one elastic ball."
+  "Own the radius-aware elastic-collision mathematics.
+
+  WHY: consuming overshoot across any number of wall impacts is a substantial,
+  independently testable rule that would obscure the world lifecycle.
+  DATA: a ball is {:x :y :vx :vy :radius}; no runtime state is retained here.
+  OPERATIONS: create a ball and advance its position and velocity.
+  BOUNDARY: world time, controls, reset, configuration validation, and all
+  presentation remain outside this namespace."
   (:require [sim.model.config :as config]))
 
-(defn direction->velocity [speed direction]
+(defn- direction->velocity [speed direction]
   {:vx (* (double speed) (Math/cos (double direction)))
    :vy (* (double speed) (Math/sin (double direction)))})
 

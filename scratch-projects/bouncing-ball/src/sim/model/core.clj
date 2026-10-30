@@ -1,16 +1,41 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.core
-  "Immutable lifecycle and controls for the bouncing-ball simulation."
+  "Own the immutable lifecycle of the bouncing-ball world.
+
+  WHY: construction, time, controls, reset, and render projection form one
+  world lifecycle and should read in one place.
+
+  DATA: empty-world documents the complete persistent runtime shape.
+  OPERATIONS: construct, advance, project, pause, reset, and change controls.
+  BOUNDARY: sim.model.ball owns elastic-collision mathematics;
+  sim.model.config owns settings and validation; renderers own presentation."
   (:require
    [sim.model.ball :as ball]
    [sim.model.config :as config]))
 
 (def default-seed 2026)
-(def dir->vel ball/direction->velocity)
-(def advance-axis ball/advance-axis)
-(def update-ball ball/advance)
+
+(def empty-clock
+  {:tick 0
+   :elapsed-seconds 0.0
+   :paused? false
+   :simulation-fps 0})
+
+(def empty-world
+  {:config nil
+   :seed 0
+   :clock empty-clock
+   :speed-multiplier 1.0
+   :theme-index 0
+   :ball nil})
+
+(defn- start-clock [simulation-config]
+  (assoc empty-clock
+         :simulation-fps
+         (get-in simulation-config [:clock :simulation-fps :initial])))
 
 (defn initial-world
+  "Create an immutable world. A map argument is config; a number is its seed."
   ([]
    (initial-world config/default-config default-seed))
   ([seed-or-config]
@@ -19,15 +44,13 @@
      (initial-world config/default-config seed-or-config)))
   ([simulation-config seed]
    (let [simulation-config (config/validate! simulation-config)]
-     {:config simulation-config
-      :seed seed
-      :tick 0
-      :elapsed-seconds 0.0
-      :paused? false
-      :speed-mult (get-in simulation-config [:ball :speed-multiplier :initial])
-      :theme-index 0
-      :sim-fps (get-in simulation-config [:clock :simulation-fps :initial])
-      :ball (ball/create simulation-config)})))
+     (assoc empty-world
+            :config simulation-config
+            :seed seed
+            :clock (start-clock simulation-config)
+            :speed-multiplier
+            (get-in simulation-config [:ball :speed-multiplier :initial])
+            :ball (ball/create simulation-config)))))
 
 (defn- validate-duration! [label seconds non-negative?]
   (when-not (and (number? seconds)
@@ -38,51 +61,70 @@
                          " and finite")
                     {:seconds seconds}))))
 
-(defn update-world-steps [world tick-count seconds]
-  (when-not (nat-int? tick-count)
-    (throw (ex-info "Tick count must be a non-negative integer"
-                    {:tick-count tick-count})))
-  (validate-duration! "Fixed-step duration" seconds false)
-  (if (or (zero? tick-count) (:paused? world))
-    world
-    (let [elapsed (* tick-count (double seconds))]
-      (-> world
-          (update :tick + tick-count)
-          (update :elapsed-seconds + elapsed)
-          (update :ball #(ball/advance (:config world)
-                                       (:speed-mult world)
-                                       elapsed %))))))
+(defn- validate-step! [step-count seconds]
+  (when-not (nat-int? step-count)
+    (throw (ex-info "Step count must be a non-negative integer"
+                    {:step-count step-count})))
+  (validate-duration! "Fixed-step duration" seconds false))
 
-(defn update-world
+(defn advance-world-steps
+  "Advance a batch while preserving exact elastic-wall behavior."
+  [world step-count seconds]
+  (validate-step! step-count seconds)
+  (if (or (zero? step-count) (get-in world [:clock :paused?]))
+    world
+    (let [elapsed-seconds (* step-count (double seconds))]
+      (-> world
+          (update-in [:clock :tick] + step-count)
+          (update-in [:clock :elapsed-seconds] + elapsed-seconds)
+          (update :ball #(ball/advance (:config world)
+                                      (:speed-multiplier world)
+                                      elapsed-seconds
+                                      %))))))
+
+(defn advance-world
+  "Advance the world by one fixed simulation step."
   ([world]
-   (update-world world (/ 1.0 (:sim-fps world))))
+   (advance-world world
+                  (/ 1.0 (get-in world [:clock :simulation-fps]))))
   ([world seconds]
-   (update-world-steps world 1 seconds)))
+   (advance-world-steps world 1 seconds)))
 
 (defn project-world
-  "Project continuous motion for rendering without changing simulation truth."
+  "Project motion for a renderer without advancing simulation truth."
   [world seconds]
   (validate-duration! "Projection duration" seconds true)
-  (if (or (zero? seconds) (:paused? world))
+  (if (or (zero? seconds) (get-in world [:clock :paused?]))
     world
     (update world :ball #(ball/advance (:config world)
-                                       (:speed-mult world)
-                                       seconds %))))
+                                      (:speed-multiplier world)
+                                      seconds
+                                      %))))
 
 (defn toggle-paused [world]
-  (update world :paused? not))
+  (update-in world [:clock :paused?] not))
 
-(defn adjust-speed [world direction]
+(defn change-speed [world direction]
   (let [{:keys [min max]} (get-in world [:config :ball :speed-multiplier])]
-    (update world :speed-mult
-            #(if (pos? direction) (clojure.core/min max (* 2.0 %))
-                 (clojure.core/max min (/ % 2.0))))))
+    (update world :speed-multiplier
+            #(if (pos? direction)
+               (clojure.core/min max (* 2.0 %))
+               (clojure.core/max min (/ % 2.0))))))
 
-(defn adjust-sim-fps [world delta]
+(defn change-simulation-fps [world amount]
   (let [{:keys [min max]} (get-in world [:config :clock :simulation-fps])]
-    (update world :sim-fps #(-> (+ % delta) (clojure.core/max min)
-                                (clojure.core/min max)))))
+    (update-in world [:clock :simulation-fps]
+               #(-> (+ % amount)
+                    (clojure.core/max min)
+                    (clojure.core/min max)))))
 
-(defn reset-world [world]
-  (merge (initial-world (:config world) (:seed world))
-         (select-keys world [:paused? :speed-mult :theme-index :sim-fps])))
+(defn reset-world
+  "Reset motion and time while preserving interactive controls."
+  [world]
+  (let [reset (initial-world (:config world) (:seed world))]
+    (-> reset
+        (assoc :speed-multiplier (:speed-multiplier world)
+               :theme-index (:theme-index world))
+        (assoc-in [:clock :paused?] (get-in world [:clock :paused?]))
+        (assoc-in [:clock :simulation-fps]
+                  (get-in world [:clock :simulation-fps])))))

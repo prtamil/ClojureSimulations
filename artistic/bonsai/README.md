@@ -39,12 +39,30 @@ changes the underlying branch structure.
 - Normal animation steps update elapsed time and growth progress without
   mutating or regenerating the tree.
 
+The persistent shape is explicit in `empty-world` and `empty-clock`:
+
+```clojure
+{:config {...} :seed 2026 :generation 0
+ :clock {:tick 0 :elapsed-seconds 0.0
+         :paused? false :simulation-fps 60}
+ :style-index 1 :theme-index 0
+ :pot {:top-row 37}
+ :tree {:trunk {...} :crown {...}}
+ :cells {...}
+ :wind 1.0 :growth-progress 1.0}
+```
+
+`growth` is separate for recursive continuous geometry; `raster` is separate
+for Bresenham lines, foliage ellipses, overlap, and layering on actual grid
+cells; `render.cells` is separate because every renderer shares its reveal and
+wind projection. These boundaries do not own the world lifecycle or devices.
+
 ## Architecture
 
 ```text
 seed + style + config ---> pot -> trunk -> crown
                                                 |
-theme -----------------> place trunk -> crown -> pot
+theme -----------------> rasterize trunk -> crown -> pot
                                                 |
 time + wind -----------> render/cells ---> visible frame glyphs
                                           /        |        \
@@ -57,7 +75,7 @@ src/bonsai/
 |   |-- config.clj       style parameters, settings, and validation
 |   |-- growth.clj       calculate the pot, trunk, and crown
 |   |-- raster.clj       place the trunk, crown, and pot onto cells
-|   `-- core.clj         readable construction and world-update story
+|   `-- core.clj         readable construction and world-advance story
 |-- render/
 |   |-- cells.clj        growth reveal and deterministic leaf rustle
 |   |-- ascii.clj        headless text renderer

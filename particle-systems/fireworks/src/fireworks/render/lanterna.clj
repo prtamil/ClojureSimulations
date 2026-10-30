@@ -5,7 +5,7 @@
    [fireworks.app.controller :as controller]
    [fireworks.app.runtime :as runtime]
    [fireworks.model.core :as model]
-   [fireworks.render.cells :as cells]
+   [fireworks.render.glyphs :as glyphs]
    [fireworks.terminal.framework :as terminal]
    [fireworks.utility.theme :as theme]))
 
@@ -38,22 +38,24 @@
 (def ^:private hud-color (terminal/rgb theme/hud-rgb))
 (def ^:private hint-color (terminal/rgb theme/hint-rgb))
 
-(defn- cell-color [palette {:keys [color-index dim?]}]
+(defn- glyph-color [palette {:keys [color-index dim?]}]
   (nth (if dim? (:dim-colors palette) (:colors palette))
        (mod color-index 7)))
 
 (defn- draw-show! [surface world]
   (let [palette (nth palettes (:theme-index world))]
-    (doseq [{:keys [column row glyph bold?] :as cell}
-            (cells/visible-cells world)]
-      (terminal/set-foreground! surface (cell-color palette cell))
+    (doseq [{:keys [column row glyph bold?] :as render-glyph}
+            (glyphs/project-show world)]
+      (terminal/set-foreground! surface (glyph-color palette render-glyph))
       (terminal/set-bold! surface bold?)
       (terminal/put-character! surface column row glyph))))
 
 (defn status-text [world measured-fps]
   (format " %5.1f fps  sim:%2d Hz  rkt:%2d%s "
-          measured-fps (:sim-fps world) (model/rocket-count world)
-          (if (:paused? world) " PAUSED" "")))
+          measured-fps
+          (get-in world [:clock :simulation-fps])
+          (model/firework-count world)
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn theme-text [world]
   (format " theme:%s " (:name (theme/current-theme world))))
@@ -84,7 +86,7 @@
   (publish! (model/resize-world world columns rows)))
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -102,7 +104,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

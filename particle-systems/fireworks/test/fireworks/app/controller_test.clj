@@ -12,13 +12,16 @@
   (is (= :more-rockets (controller/key-event->command {:raw-key \+})))
   (is (= :more-rockets (controller/key-event->command {:raw-key \=})))
   (is (= :previous-theme (controller/key-event->command {:raw-key \T})))
+  (is (= :restart-show (controller/key-event->command {:raw-key \r})))
   (is (nil? (controller/key-event->command {:raw-key \x}))))
 
 (deftest commands-update-only-the-requested-setting
   (let [world (model/initial-world 7)]
-    (is (= 35 (:sim-fps (controller/apply-command world :raise-sim-fps))))
-    (is (= 7 (model/rocket-count
+    (is (= 35 (get-in (controller/apply-command world :raise-sim-fps)
+                      [:clock :simulation-fps])))
+    (is (= 7 (model/firework-count
               (controller/apply-command world :more-rockets))))
     (is (= 9 (:theme-index
               (controller/apply-command world :previous-theme))))
-    (is (:paused? (controller/apply-command world :toggle-pause)))))
+    (is (get-in (controller/apply-command world :toggle-pause)
+                [:clock :paused?]))))

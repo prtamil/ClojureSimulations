@@ -7,15 +7,16 @@ fixed velocities and wrap around a grid.
 ## Design
 
 ```text
-config ---> particle rules ---> immutable world
-                                  |
-                    controller + fixed-step clock
-                                  |
-                       ASCII / terminal / Quil
+config ---> immutable world ---> particle movement
+                  |                    |
+                  `------ clock <------'
+                           |
+                ASCII / terminal / Quil
 ```
 
-- `sim.model.particle` owns the example motion rule.
-- `sim.model.core` owns lifecycle, time, pause/reset, and clock controls.
+- `sim.model.core` owns the world lifecycle and the small particle motion rule.
+- Particles are ordinary maps because they always advance and reset with the
+  world; a separate particle subsystem would add navigation without clarity.
 - Renderers only project supplied world values.
 - `sim.app.runtime` is the single stateful boundary used by interactive views.
 
@@ -27,9 +28,8 @@ random permutation, cache, or renderer state in the model.
 ```text
 src/sim/
 |-- model/
-|   |-- config.clj
-|   |-- particle.clj
-|   `-- core.clj
+|   |-- config.clj   adjustable rules and staged validation
+|   `-- core.clj     world, clock, particle motion, and controls
 |-- render/{ascii,lanterna,quil}.clj
 |-- app/{controller,runtime}.clj
 |-- terminal/framework.clj
@@ -65,8 +65,11 @@ clojure -T:build uber
          '[sim.render.ascii :as ascii])
 
 (def before (model/initial-world 42))
-(def after (model/update-world-steps before 60 (/ 1.0 60.0)))
+(def after (model/advance-world-steps before 60 (/ 1.0 60.0)))
 (ascii/render after)
 
 (assert (= before (model/initial-world 42)))
 ```
+
+See [learning.md](learning.md) for the runtime shape, abstraction rationale,
+and a guided REPL walkthrough.

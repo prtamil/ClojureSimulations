@@ -21,11 +21,14 @@
     (cond
       (predicate world) world
       (zero? remaining) world
-      :else (recur (model/update-world world 0.01) (dec remaining)))))
+      :else (recur (model/advance-world world 0.01) (dec remaining)))))
 
 (deftest initial-world-is-complete-and-deterministic
   (let [world (model/initial-world 42)]
     (is (= world (model/initial-world 42)))
+    (is (= #{:config :seed :cycle :clock :tree :cells :leaf-templates
+             :falling-leaves :phase :phase-elapsed}
+           (set (keys world))))
     (is (= :display (:phase world)))
     (is (= 1 (:cycle world)))
     (is (map? (:cells world)))
@@ -34,9 +37,9 @@
 
 (deftest lifecycle-visits-falling-reset-and-next-tree
   (let [display (model/initial-world quick-config 7)
-        falling (model/update-world-steps display 5 0.01)
+        falling (model/advance-world-steps display 5 0.01)
         resetting (advance-until falling #(= :reset (:phase %)) 1000)
-        next-tree (model/update-world-steps resetting 6 0.01)]
+        next-tree (model/advance-world-steps resetting 6 0.01)]
     (is (= :falling (:phase falling)))
     (is (= (count (:leaf-templates display))
            (count (:falling-leaves falling))))
@@ -52,7 +55,7 @@
 (deftest falling-leaves-produce-heads-and-trails
   (let [world (-> (model/initial-world quick-config 19)
                   model/skip-phase
-                  (model/update-world-steps 4 0.01))
+                  (model/advance-world-steps 4 0.01))
         roles (set (map :role (cells/visible-cells world)))]
     (is (= :falling (:phase world)))
     (is (contains? roles :fall-head))
@@ -62,14 +65,16 @@
   (let [world (model/initial-world 42)]
     (testing "pause freezes all model state"
       (let [paused (model/toggle-paused world)]
-        (is (= paused (model/update-world-steps paused 100 0.01)))))
+        (is (= paused (model/advance-world-steps paused 100 0.01)))))
     (testing "skip advances the lifecycle"
       (is (= :falling (:phase (model/skip-phase world))))
       (is (= 2 (:cycle (-> world model/skip-phase model/skip-phase)))))
     (testing "simulation rate is clamped"
-      (is (= 120 (:sim-fps (model/adjust-sim-fps world 1000))))
-      (is (= 20 (:sim-fps (model/adjust-sim-fps world -1000)))))
+      (is (= 120 (get-in (model/change-simulation-fps world 1000)
+                         [:clock :simulation-fps])))
+      (is (= 20 (get-in (model/change-simulation-fps world -1000)
+                        [:clock :simulation-fps]))))
     (is (thrown? clojure.lang.ExceptionInfo
-                 (model/update-world-steps world -1 0.1)))
+                 (model/advance-world-steps world -1 0.1)))
     (is (thrown? clojure.lang.ExceptionInfo
-                 (model/update-world-steps world 1 0.0)))))
+                 (model/advance-world-steps world 1 0.0)))))

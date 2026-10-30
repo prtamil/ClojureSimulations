@@ -1,65 +1,82 @@
 # ASCII Fireworks
 
-A Clojure-first particle simulation inspired by the visual behavior of
-`Graphics/C/AsciiCreativeCoding/particle_systems/fireworks.c`. Rockets rise
-from the bottom of the screen, lose upward velocity, burst into multicolored
-sparks, drift under gravity, and relaunch after a random delay.
+A deterministic Clojure particle simulation inspired by
+`Graphics/C/AsciiCreativeCoding/particle_systems/fireworks.c`. Fireworks wait,
+launch from the bottom of the screen, burst into colored sparks, fade under
+gravity, and reload for another launch.
 
-The simulation uses the repository conventions demonstrated by
-`artistic/bonsai` and `scratch-projects/basic-clojure-simulation-framework`:
-pure immutable model updates, explicit random state, a shared runtime atom,
-headless ASCII inspection, a reusable fixed-step terminal loop, and separate
-Lanterna and Quil adapters. The implementation is derived from the behavior,
-not from the C program's memory layout or control flow.
+The model is written as a small domain story:
 
 ```text
-model/core ----------> ASCII renderer
-    |               `-> Lanterna renderer -> terminal/framework
-    |               `-> Quil renderer
-controller ----------------^       ^
-    `------------------------------'
+initial-world
+  -> validate configuration
+  -> start clock
+  -> construct show
+
+advance-world
+  -> advance fireworks
+       waiting  -> wait or launch
+       flying   -> fly or burst
+       bursting -> show burst or reload
+  -> advance clock
+
+project-show
+  -> start with an empty canvas
+  -> place rockets, exhaust, and sparks
+  -> return glyphs in reading order
 ```
 
-## Behavioral goals
+Calculation and presentation are separate. The model stores positions,
+velocities, lifetimes, and the explicit random state. `render/glyphs.clj`
+projects those values into semantic glyphs shared by the ASCII,
+Lanterna, and Quil renderers. Changing a theme therefore changes presentation
+without recalculating the show.
 
-- A `waiting -> ascending -> bursting -> waiting` rocket lifecycle.
-- Six active rockets at startup, adjustable from 1 to 20.
-- 80 sparks per burst and the original launch, drag, gravity, spread, life,
-  and fade timing at the default 30 Hz.
-- The original ASCII spark alphabet and all ten xterm-256 color themes.
-- Fixed-step simulation with a capped 100 ms frame delta.
-- Immediate speed, rocket-count, and theme controls.
-- Terminal-size simulation coordinates and scene reconstruction after resize.
-- A measured terminal FPS readout and HUD drawn over the animation.
+See [learning.md](learning.md) for the complete runtime shape and a guided REPL
+walkthrough.
 
-The implementation uses seconds and terminal cells as its units. Lifetimes,
-launch delays, and gravity therefore remain stable when the simulation tick
-rate changes. Randomness is an explicit seeded value stored in the world, so
-every headless run and test is reproducible.
+## Runtime shape
+
+```clojure
+{:config {...}                         ; adjustable rules
+ :seed 42
+ :random-state 42                     ; next deterministic random value
+ :theme-index 0
+ :clock {:tick 0
+         :elapsed-seconds 0.0
+         :paused? false
+         :simulation-fps 30}
+ :show {:fireworks [...]              ; waiting, flying, or bursting values
+        :next-id 6}}
+```
+
+`empty-world`, `empty-clock`, and `empty-show` in `model/core.clj` make this
+shape visible before any calculation. The firework and spark namespaces define
+their own empty values in the same way.
 
 ## Source layout
 
 ```text
 src/fireworks/
 |-- model/
-|   |-- config.clj       units, defaults, and validation
-|   |-- spark.clj        burst creation, gravity, and fading
-|   |-- rocket.clj       waiting, ascent, and burst transitions
-|   `-- core.clj         world stepping and interactive controls
+|   |-- config.clj       defaults and staged validation
+|   |-- spark.clj        create, move, and fade sparks
+|   |-- firework.clj     wait, launch, fly, burst, and reload
+|   `-- core.clj         construct and advance the world
 |-- app/
 |   |-- controller.clj   renderer-independent key commands
 |   `-- runtime.clj      shared world and renderer lifecycle claims
 |-- render/
+|   |-- glyphs.clj       domain values to semantic glyphs
 |   |-- ascii.clj        pure text snapshots
-|   |-- cells.clj        model-to-character projection and overdraw
 |   |-- lanterna.clj     native terminal animation
-|   `-- quil.clj         graphical character-cell animation
+|   `-- quil.clj         graphical glyph-grid animation
 |-- terminal/
 |   `-- framework.clj    screen lifecycle, input, buffering, and frame loop
 `-- utility/
     |-- clock.clj        fixed-step accumulator
     |-- random.clj       deterministic random stream
-    `-- theme.clj        C palettes and xterm-to-RGB conversion
+    `-- theme.clj        palettes and xterm-to-RGB conversion
 ```
 
 ## Run
@@ -67,7 +84,7 @@ src/fireworks/
 Run commands from this directory:
 
 ```powershell
-# Headless ASCII snapshot after 45 simulation ticks
+# Headless ASCII snapshot after 45 simulation steps
 clojure -M:run
 
 # Interactive terminal animation
@@ -94,44 +111,36 @@ terminal emulator.
 | --- | --- |
 | `q`, `Esc`, `Ctrl-C` | Quit the active renderer |
 | `]` / `[` | Raise / lower simulation rate by 5 Hz (10–60 Hz) |
-| `+` / `-` | Enable / disable one rocket (1–20) |
+| `+` / `-` | Add / remove one firework (1–20) |
 | `t` / `T` | Next / previous color theme |
 | `Space` | Pause / resume |
 | `r` | Restart the show from its seed |
 
-The first four rows reproduce the C controls. Pause and deterministic reset
-are small framework-friendly additions shared by the terminal and Quil views.
-
-## REPL examples
+## REPL example
 
 ```clojure
 (require '[fireworks.model.core :as model]
-         '[fireworks.render.ascii :as ascii])
+         '[fireworks.render.ascii :as ascii]
+         '[fireworks.render.glyphs :as glyphs])
 
 (def start (model/initial-world 42))
-(def frame (model/update-world-steps start 45 (/ 1.0 30.0)))
+(def frame (model/advance-world-steps start 45 (/ 1.0 30.0)))
+
+(get-in frame [:show :fireworks])
+(glyphs/project-show frame)
 (ascii/render frame)
 
-;; The same seed and steps always produce the same complete value.
+;; The same seed and steps produce the same complete value.
 (= frame
-   (model/update-world-steps (model/initial-world 42)
-                             45 (/ 1.0 30.0)))
+   (model/advance-world-steps (model/initial-world 42)
+                              45
+                              (/ 1.0 30.0)))
 ```
 
-## Architecture notes
-
-The model never calls a renderer, sleeps, prints, or mutates an atom. Each
-simulation tick receives the world plus a fixed duration and returns the next
-world. The world contains only active rockets; waiting rockets carry a delay,
-ascending rockets carry position and velocity, and bursting rockets carry a
-vector of live sparks. Expired sparks leave that vector instead of remaining
-as inactive placeholders.
-
-Lanterna uses the actual terminal columns and rows as logical simulation
-coordinates. On resize it rebuilds the scene while preserving theme, speed,
-enabled count, and accumulated run information. Quil and the headless renderer
-consume the same `visible-cells` projection, including collision overdraw,
-bright young sparks, and dim dying sparks.
+The model never calls a renderer, sleeps, prints, or mutates an atom. Expired
+sparks leave their firework's active vector. Every renderer consumes the same
+glyph projection, including clipping, collision overdraw, bright young sparks,
+and dim dying sparks.
 
 ## License
 

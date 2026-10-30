@@ -6,7 +6,7 @@
    [sim.app.runtime :as runtime]
    [sim.model.config :as config]
    [sim.model.core :as model]
-   [sim.render.ascii :as ascii]
+   [sim.model.projection :as projection]
    [sim.terminal.framework :as terminal]
    [sim.utility.theme :as theme]))
 
@@ -54,21 +54,23 @@
         width (config/grid-width simulation-config)
         height (config/grid-height simulation-config)]
     (reduce
-     (fn [cells {:keys [x y depth length] :as cell}]
-       (let [point (terminal/project-point layout x y width height)
+     (fn [cells {:keys [position depth stream-length character] :as glyph}]
+       (let [[x y] position
+             point (terminal/project-point layout x y width height)
              index (+ (:column point) (* (:row point) window-columns))
              current (get cells index)]
          (if (or (nil? current) (< depth (:depth current)))
            (assoc cells index
-                  (assoc cell
+                  (assoc glyph
                          :column (:column point)
                          :row (:row point)
+                         :glyph character
                          :color (if (zero? depth)
                                   (:flash palette)
-                                  (trail-color palette depth length))))
+                                  (trail-color palette depth stream-length))))
            cells)))
      {}
-     (ascii/visible-cells world))))
+     (projection/visible-glyphs world))))
 
 (defn- draw-rain! [{:keys [columns] :as surface} world layout palette]
   (let [{field-columns :columns field-rows :rows
@@ -88,11 +90,11 @@
   (format "%5.1f fps  streams:%d  tick:%,d  %dHz  speed:x%.2f  %s%s"
           measured-fps
           (count (:drops world))
-          (:tick world)
-          (:sim-fps world)
-          (:speed-mult world)
+          (get-in world [:clock :tick])
+          (get-in world [:clock :simulation-fps])
+          (:speed-multiplier world)
           (:name (theme/current-theme world))
-          (if (:paused? world) " PAUSED" "")))
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as surface} world {:keys [measured-fps]}]
@@ -113,7 +115,7 @@
   world)
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -132,7 +134,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

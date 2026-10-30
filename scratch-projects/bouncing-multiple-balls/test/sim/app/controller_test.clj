@@ -27,13 +27,13 @@
         lowered (nth (iterate #(controller/apply-command % :lower-sim-fps)
                               world) 100)]
     (is (= (get-in world [:config :balls :speed-multiplier :max])
-           (:speed-mult faster)))
+           (:speed-multiplier faster)))
     (is (= (get-in world [:config :balls :speed-multiplier :min])
-           (:speed-mult slower)))
+           (:speed-multiplier slower)))
     (is (= (get-in world [:config :clock :simulation-fps :max])
-           (:sim-fps raised)))
+           (get-in raised [:clock :simulation-fps])))
     (is (= (get-in world [:config :clock :simulation-fps :min])
-           (:sim-fps lowered)))))
+           (get-in lowered [:clock :simulation-fps])))))
 
 (deftest themes-wrap
   (let [world (model/initial-world)

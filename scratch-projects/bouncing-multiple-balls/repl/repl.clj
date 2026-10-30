@@ -9,7 +9,7 @@
 
 (comment
   (def before (model/initial-world 42))
-  (def after (model/update-world-steps before 120 (/ 1.0 60.0)))
+  (def after (model/advance-world-steps before 120 (/ 1.0 60.0)))
   (take 3 (:balls after))
   (ascii/render after)
 

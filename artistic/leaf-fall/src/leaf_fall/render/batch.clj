@@ -1,5 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-(ns leaf-fall.render.batch)
+(ns leaf-fall.render.batch
+  "Batch many visible grid cells into a few role-colored text rows.
+
+  WHY: graphical renderers avoid thousands of individual text calls while
+  preserving painter order. DATA: returns {:role :row :text} draw batches.
+  OPERATIONS: group cells by role and row. BOUNDARY: model projection, colors,
+  and device drawing remain outside this renderer-specific optimization.")
 
 (def role-order
   "Painter order for the five colors in the ASCII scene."

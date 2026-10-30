@@ -16,8 +16,8 @@
                 (filter #(= :pot (:role %)) visible-at-start)))))
 
 (deftest wind-animation-is-deterministic-for-a-world-value
-  (let [world (model/update-world-steps (model/initial-world 42)
-                                        60 (/ 1.0 30.0))
+  (let [world (model/advance-world-steps (model/initial-world 42)
+                                         60 (/ 1.0 30.0))
         foliage (first (filter #(= :foliage (:role %))
                                (vals (:cells world))))]
     (is foliage)

@@ -33,9 +33,9 @@
                               world)
                      100)]
     (is (= (get-in world [:config :clock :simulation-fps :max])
-           (:sim-fps raised)))
+           (get-in raised [:clock :simulation-fps])))
     (is (= (get-in world [:config :clock :simulation-fps :min])
-           (:sim-fps lowered)))))
+           (get-in lowered [:clock :simulation-fps])))))
 
 (deftest themes-wrap-in-both-directions
   (let [world (model/initial-world)

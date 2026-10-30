@@ -1,5 +1,11 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
-(ns sim.model.config)
+(ns sim.model.config
+  "Own adjustable simulation settings and reject invalid combinations.
+
+  WHY: every consumer needs one trustworthy configuration boundary.
+  DATA: default-config groups grid, ball, clock, and render settings.
+  OPERATIONS: read grid dimensions and validate values in named stages.
+  BOUNDARY: live world state and derived ball motion do not belong here.")
 
 (def supported-band-count 4)
 
@@ -63,68 +69,91 @@
        (= 3 (count value))
        (every? byte-value? value)))
 
+(defn- validate-paths! [config checks]
+  (doseq [[path valid? message] checks
+          :let [value (get-in config path)]
+          :when (not (valid? value))]
+    (throw (ex-info (str "Invalid simulation configuration at " path ": "
+                         message)
+                    {:path path :value value})))
+  config)
+
+(defn- validate-values! [config]
+  (validate-paths!
+   config
+   [[[:grid :width] pos-int? "must be a positive integer"]
+    [[:grid :height] pos-int? "must be a positive integer"]
+    [[:ball :radius] positive-number? "must be a positive finite number"]
+    [[:ball :initial :x] finite-number? "must be a finite number"]
+    [[:ball :initial :y] finite-number? "must be a finite number"]
+    [[:ball :initial :speed] positive-number?
+     "must be a positive finite number"]
+    [[:ball :initial :direction] finite-number? "must be a finite number"]
+    [[:ball :speed-multiplier :min] positive-number? "must be positive"]
+    [[:ball :speed-multiplier :initial] positive-number? "must be positive"]
+    [[:ball :speed-multiplier :max] positive-number? "must be positive"]
+    [[:clock :simulation-fps :min] pos-int? "must be a positive integer"]
+    [[:clock :simulation-fps :initial] pos-int? "must be a positive integer"]
+    [[:clock :simulation-fps :max] pos-int? "must be a positive integer"]
+    [[:clock :simulation-fps :step] pos-int? "must be a positive integer"]
+    [[:clock :render-fps] pos-int? "must be a positive integer"]
+    [[:clock :max-frame-delta-ms] pos-int? "must be a positive integer"]]))
+
+(defn- validate-ranges! [config]
+  (let [{:keys [min initial max]} (get-in config [:clock :simulation-fps])]
+    (when-not (<= min initial max)
+      (throw (ex-info "Invalid simulation FPS range"
+                      {:path [:clock :simulation-fps]
+                       :values [min initial max]}))))
+  (let [{:keys [min initial max]} (get-in config [:ball :speed-multiplier])]
+    (when-not (<= min initial max)
+      (throw (ex-info "Invalid ball speed multiplier range"
+                      {:path [:ball :speed-multiplier]
+                       :values [min initial max]}))))
+  config)
+
+(defn- validate-relationships! [config]
+  (let [width (double (grid-width config))
+        height (double (grid-height config))
+        radius (double (get-in config [:ball :radius]))
+        x (double (get-in config [:ball :initial :x]))
+        y (double (get-in config [:ball :initial :y]))]
+    (when-not (< (* 2.0 radius) (min width height))
+      (throw (ex-info "Ball diameter must be smaller than both grid dimensions"
+                      {:path [:ball :radius]
+                       :value radius})))
+    (when-not (and (<= radius x (- width radius))
+                   (<= radius y (- height radius)))
+      (throw (ex-info "Initial ball center must be inside the radius-aware bounds"
+                      {:path [:ball :initial]
+                       :value {:x x :y y}}))))
+  config)
+
+(defn- validate-render-settings! [config]
+  (validate-paths!
+   config
+   [[[:render :cell-size] pos-int? "must be a positive integer"]
+    [[:render :hud-height] nat-int? "must be a non-negative integer"]
+    [[:render :footer-height] nat-int? "must be a non-negative integer"]
+    [[:render :terminal-cell-aspect] positive-number?
+     "must be a positive finite number"]
+    [[:render :band-count] pos-int? "must be a positive integer"]
+    [[:render :background] rgb-color? "must be an RGB vector"]
+    [[:render :hud-background] rgb-color? "must be an RGB vector"]
+    [[:render :hud-text] rgb-color? "must be an RGB vector"]
+    [[:render :boundary] rgb-color? "must be an RGB vector"]])
+  (when-not (= supported-band-count (get-in config [:render :band-count]))
+    (throw (ex-info (str "Themes require exactly " supported-band-count
+                         " color bands")
+                    {:path [:render :band-count]
+                     :value (get-in config [:render :band-count])})))
+  config)
+
 (defn validate!
   "Return config unchanged, or throw with the path of an invalid setting."
   [config]
-  (let [checks
-        [[[:grid :width] pos-int? "must be a positive integer"]
-         [[:grid :height] pos-int? "must be a positive integer"]
-         [[:ball :radius] positive-number? "must be a positive finite number"]
-         [[:ball :initial :x] finite-number? "must be a finite number"]
-         [[:ball :initial :y] finite-number? "must be a finite number"]
-         [[:ball :initial :speed] positive-number? "must be a positive finite number"]
-         [[:ball :initial :direction] finite-number? "must be a finite number"]
-         [[:ball :speed-multiplier :min] positive-number? "must be positive"]
-         [[:ball :speed-multiplier :initial] positive-number? "must be positive"]
-         [[:ball :speed-multiplier :max] positive-number? "must be positive"]
-         [[:clock :simulation-fps :min] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :initial] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :max] pos-int? "must be a positive integer"]
-         [[:clock :simulation-fps :step] pos-int? "must be a positive integer"]
-         [[:clock :render-fps] pos-int? "must be a positive integer"]
-         [[:clock :max-frame-delta-ms] pos-int? "must be a positive integer"]
-         [[:render :cell-size] pos-int? "must be a positive integer"]
-         [[:render :hud-height] nat-int? "must be a non-negative integer"]
-         [[:render :footer-height] nat-int? "must be a non-negative integer"]
-         [[:render :terminal-cell-aspect] positive-number?
-          "must be a positive finite number"]
-         [[:render :band-count] pos-int? "must be a positive integer"]
-         [[:render :background] rgb-color? "must be an RGB vector"]
-         [[:render :hud-background] rgb-color? "must be an RGB vector"]
-         [[:render :hud-text] rgb-color? "must be an RGB vector"]
-         [[:render :boundary] rgb-color? "must be an RGB vector"]]]
-    (doseq [[path valid? message] checks
-            :let [value (get-in config path)]
-            :when (not (valid? value))]
-      (throw (ex-info (str "Invalid simulation configuration at " path ": " message)
-                      {:path path :value value})))
-    (let [{:keys [min initial max]} (get-in config [:clock :simulation-fps])]
-      (when-not (<= min initial max)
-        (throw (ex-info "Invalid simulation FPS range"
-                        {:path [:clock :simulation-fps]
-                         :values [min initial max]}))))
-    (let [{:keys [min initial max]} (get-in config [:ball :speed-multiplier])]
-      (when-not (<= min initial max)
-        (throw (ex-info "Invalid ball speed multiplier range"
-                        {:path [:ball :speed-multiplier]
-                         :values [min initial max]}))))
-    (let [width (double (grid-width config))
-          height (double (grid-height config))
-          radius (double (get-in config [:ball :radius]))
-          x (double (get-in config [:ball :initial :x]))
-          y (double (get-in config [:ball :initial :y]))]
-      (when-not (< (* 2.0 radius) (min width height))
-        (throw (ex-info "Ball diameter must be smaller than both grid dimensions"
-                        {:path [:ball :radius]
-                         :value radius})))
-      (when-not (and (<= radius x (- width radius))
-                     (<= radius y (- height radius)))
-        (throw (ex-info "Initial ball center must be inside the radius-aware bounds"
-                        {:path [:ball :initial]
-                         :value {:x x :y y}}))))
-    (when-not (= supported-band-count (get-in config [:render :band-count]))
-      (throw (ex-info (str "Themes require exactly " supported-band-count
-                           " color bands")
-                      {:path [:render :band-count]
-                       :value (get-in config [:render :band-count])})))
-    config))
+  (-> config
+      validate-values!
+      validate-ranges!
+      validate-relationships!
+      validate-render-settings!))

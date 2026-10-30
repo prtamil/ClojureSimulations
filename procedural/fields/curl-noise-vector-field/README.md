@@ -1,92 +1,117 @@
 # Curl Noise Vector Field
 
-A Clojure-first exploration of curl noise: particles follow the divergence-free
-velocity field of a scalar potential, leave fading trails, and can be viewed
-through several live interpretations of the same field.
+A deterministic Clojure exploration of curl noise. Particles follow the
+divergence-free velocity field of a scalar potential, leave fading trails, and
+can be viewed through several live interpretations of the same field.
 
-The visual idea is shared with `curl_noise_vector_field.c`, but this project is
-a fresh functional design rather than a structural port. It keeps the original
-experience—flowing particles, warped flow, vector arrows, scalar potential,
-curl magnitude, color themes, and interactive controls—while expressing the
-simulation as small immutable transformations.
+The visual idea is shared with `curl_noise_vector_field.c`, but the model is a
+functional design built from immutable values and small domain operations.
 
-## Model
+## Model story
 
-The simulation is built from four concepts:
+The top-level workflow is deliberately direct:
 
 ```text
-seed ---> scalar field ---> curl direction ---> particle positions
-               |                                  |
-               |                                  v
-               `---> sampled static cells      sparse trails
-                              \                 /
-                               semantic cells
-                                     |
-                          ASCII / Lanterna / Quil
+initial-world
+  -> validate configuration
+  -> start the clock and controls
+  -> shuffle a field permutation
+  -> spawn particles
+  -> calculate the selected static view, when needed
+
+advance particle view
+  -> advance clock, field, and flash
+  -> move or respawn particles
+  -> fade the trail
+  -> deposit new particle hits
+
+advance static view
+  -> advance clock, field, and flash for the complete batch
+  -> sample the selected field view once
+
+project-world
+  -> select the visible trail or static samples
+  -> expose only visible particle data
+  -> return one renderer-independent scene
 ```
 
-- `field.clj` owns field time, potential sampling, curl directions, and static
-  grid views.
-- `particle.clj` creates particles and advances them using elapsed seconds.
-- `trail.clj` fades and deposits sparse semantic cells.
-- `core.clj` composes those operations and owns controls and lifecycle.
-
-Particle lifetimes are measured in seconds rather than update counts. Changing
-the simulation frequency therefore changes numerical granularity, not the
-intended lifetime or speed.
-
-The world contains ordinary Clojure values:
+The world contains calculation data, not terminal characters or Quil drawing
+commands:
 
 ```clojure
-{:field {:time 0.0 :permutation [...]}
+{:config {...}
+ :random-state 123456789                  ; next deterministic random value
+ :clock {:tick 0
+         :paused? false
+         :simulation-fps 60}
+ :field {:time 0.0
+         :permutation [...]}
  :particles [{:position [x y]
               :band 2
               :age-seconds 0.4
               :lifetime-seconds 3.7}]
- :cells {[x y] {:position [x y]
+ :trail {[x y] {:position [x y]
                 :intensity 0.82
                 :band 2}}
- ...}
+ :view {:pattern :particles
+        :samples {}}
+ :particle-speed 8
+ :drift-multiplier 1
+ :theme-index 0
+ :flash-intensity 1.0}
 ```
 
-There are no parallel glow/color arrays, mutable particle pools, buffer-pattern
-flags, or duplicated fast paths. A particle step reads naturally:
+`empty-world`, `empty-clock`, and `empty-view` in `model/core.clj` document the
+complete persistent runtime shape. Individual particle, trail, and field sample
+shapes are documented beside the functions that create them.
 
-```text
-advance field → fade trails → move particles → deposit new trail cells
-```
+## Calculation and projection
 
-Static views advance by the same elapsed time and sample the final field once
-per clock batch.
+The model uses precise names for different concepts:
+
+- `:trail` is calculated history left by moving particles.
+- `[:view :samples]` contains calculated scalar or vector field samples for a
+  static view.
+- `render/projection.clj` selects those values into a visible `scene`.
+- ASCII, Lanterna, and Quil decide how to draw that scene.
+
+The former `:cells` name mixed trails, field samples, and terminal cells. The
+new names keep those meanings separate. Actual terminal cells and Quil pixel
+cell sizes still use the word `cell` where it is accurate.
+
+Particle lifetimes are measured in seconds rather than update counts. Changing
+the simulation frequency changes numerical granularity, not the intended
+lifetime or speed.
 
 ## Source layout
 
 ```text
 src/sim/
 |-- model/
-|   |-- config.clj      parameters and validation
-|   |-- field.clj       potential, curl, and sampled field cells
-|   |-- particle.clj    elapsed-time particles
-|   |-- trail.clj       sparse fading trails
-|   `-- core.clj        world composition and controls
+|   |-- config.clj       parameters and staged validation
+|   |-- field.clj        potential, curl, and sampled field values
+|   `-- core.clj         world, particles, trails, advancement, and controls
 |-- render/
-|   |-- ascii.clj       pure headless renderer
-|   |-- lanterna.clj    interactive terminal adapter
-|   `-- quil.clj        interactive graphical adapter
+|   |-- projection.clj   model values to a shared visible scene
+|   |-- ascii.clj        pure headless renderer
+|   |-- lanterna.clj     interactive terminal adapter
+|   `-- quil.clj         interactive graphical adapter
 |-- terminal/
-|   `-- framework.clj   reusable terminal lifecycle and fixed-step loop
+|   `-- framework.clj    terminal lifecycle and fixed-step loop
 |-- app/
-|   |-- controller.clj  key events to data commands
-|   `-- runtime.clj     shared runtime atom
+|   |-- controller.clj   key events to data commands
+|   `-- runtime.clj      shared runtime atom
 `-- utility/
-    |-- clock.clj       fixed-step timing
-    |-- noise.clj       Perlin, fBm, warping, and curl mathematics
-    |-- random.clj      explicit deterministic random streams
-    `-- theme.clj       palettes
+    |-- clock.clj        fixed-step timing
+    |-- noise.clj        Perlin, fBm, warping, and curl mathematics
+    |-- random.clj       explicit deterministic random streams
+    `-- theme.clj        palettes
 ```
 
-Only the application boundary is stateful. The world stored in the runtime
-atom remains immutable and deterministic for a given seed.
+Only the application boundary is stateful. A seeded world and its evolution
+remain structurally repeatable.
+
+See [learning.md](learning.md) for a guided reading order and REPL walkthrough.
 
 ## Run
 
@@ -141,16 +166,18 @@ All views are interpretations of the same seeded, drifting field.
 
 ```clojure
 (require '[sim.model.core :as model]
-         '[sim.render.ascii :as ascii])
+         '[sim.render.ascii :as ascii]
+         '[sim.render.projection :as projection])
 
 (def before (model/initial-world 42))
 (def after
-  (model/update-world-steps before 60 (/ 1.0 60.0)))
+  (model/advance-world-steps before 60 (/ 1.0 60.0)))
 
 (ascii/render after)
 (model/field-time after)
 (take 3 (:particles after))
-(take 3 (:cells after))
+(take 3 (:trail after))
+(projection/project-world after)
 
 ;; Pure, seeded construction and evolution are repeatable.
 (assert (= before (model/initial-world 42)))

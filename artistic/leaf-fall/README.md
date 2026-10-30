@@ -13,7 +13,7 @@ transformations:
 - a two-column trunk, flared base, roots, side branches, and crown;
 - sparse Bresenham rasterization with direction-aware ASCII glyphs;
 - soft, terminal-aspect-correct foliage clouds;
-- immutable leaf templates and elapsed-time particle motion;
+- immutable leaf templates and elapsed-time falling-leaf motion;
 - display → falling → reset → regenerated-tree phases.
 
 There are no fixed branch stacks, leaf pools, dense model canvases, or
@@ -29,13 +29,13 @@ rendering is informed by `artistic/bonsai`.
 ```text
 seed + config -> calculate trunk -> calculate crown
                                       |
-                     place trunk -> place crown -> scatter leaves
+                 rasterize trunk -> crown -> scatter leaves
                                       |
                               immutable world
                                       |
                          display -> falling -> reset
                                       |
-                               semantic cells
+                          discrete semantic cells
                               /       |        \
                          headless  terminal    Quil
 ```
@@ -72,9 +72,17 @@ the graphical window show the same simulation.
 
 ## Model data
 
-The runtime structure exposes the domain directly:
+The complete persistent runtime shape is explicit in `empty-world` and
+`empty-clock`:
 
-    {:tree
+    {:config {...}
+     :seed 2026
+     :cycle 1
+     :clock {:tick 0
+             :elapsed-seconds 0.0
+             :paused? false
+             :simulation-fps 60}
+     :tree
      {:trunk {:base [...]
               :top [...]
               :height 25
@@ -86,10 +94,17 @@ The runtime structure exposes the domain directly:
      :cells {...}
      :leaf-templates [...]
      :falling-leaves [...]
-     :phase :display}
+     :phase :display
+     :phase-elapsed 0.0}
 
 Tree calculation is independent of placement. Starting leaf fall preserves the
-tree and bark cells; only the leaf templates become moving particles. See
+tree and bark cells; only the leaf templates become falling leaves.
+
+`growth` is separate for recursive continuous geometry; `raster` is separate
+for line/ellipse rasterization and deterministic scattering; `leaf` is
+separate because phase logic and cell projection share its delay and motion
+rules; `render.cells` is the shared projection into actual discrete grid
+cells. None owns devices or mutable runtime state. See
 learning.md for the complete model walkthrough.
 
 ## Run
@@ -142,7 +157,7 @@ or speed of the animation. Falling distance is integrated from elapsed time.
 
 (def falling (model/skip-phase tree))
 (def two-seconds-later
-  (model/update-world-steps falling 120 (/ 1.0 60.0)))
+  (model/advance-world-steps falling 120 (/ 1.0 60.0)))
 (ascii/render two-seconds-later)
 
 ;; Construction and updates are ordinary repeatable value transformations.

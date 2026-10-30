@@ -59,10 +59,10 @@
 (defn- status-text [world measured-fps]
   (format "%5.1f fps  sim:%dHz x%.2f %s%s"
           measured-fps
-          (:sim-fps world)
-          (:speed-mult world)
+          (get-in world [:clock :simulation-fps])
+          (:speed-multiplier world)
           (:name (theme/current-theme world))
-          (if (:paused? world) " PAUSED" "")))
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as terminal}
@@ -113,7 +113,7 @@
   world)
 
 (defn- tick [world dt]
-  (publish! (model/update-world world dt)))
+  (publish! (model/advance-world world dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -132,7 +132,7 @@
         :tick tick
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

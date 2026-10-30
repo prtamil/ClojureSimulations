@@ -1,6 +1,14 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns bonsai.render.cells
-  "Frame-specific growth reveal and wind animation for semantic cells."
+  "Project persistent grid cells into frame-specific visible cells.
+
+  WHY: ASCII, terminal, and Quil share growth reveal and deterministic wind
+  animation, while the persistent raster must remain stable.
+  DATA: consumes actual discrete grid cells and returns cells with display
+  glyphs; retains no state.
+  OPERATIONS: test visibility, select a display glyph, and collect visible cells.
+  BOUNDARY: geometry, rasterization, clock advancement, and device drawing stay
+  outside this namespace."
   (:require
    [bonsai.model.config :as config]
    [bonsai.utility.random :as random]
@@ -33,7 +41,7 @@
         base-frequency (get-in world [:config :animation :rustle-frequency])
         base-rate (get-in world [:config :animation :rustle-rate])
         wind (:wind world)
-        time-key (int (* (:elapsed-seconds world)
+        time-key (int (* (get-in world [:clock :elapsed-seconds])
                          base-frequency
                          (+ 0.4 (* wind 0.6))))
         hash-value (random/hash3 column row time-key)

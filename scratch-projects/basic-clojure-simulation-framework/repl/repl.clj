@@ -3,17 +3,14 @@
   (:require
    [driver :as driver]
    [sim.model.core :as model]
-   [sim.model.particle :as particle]
    [sim.render.ascii :as ascii]))
 
 (comment
   (def before (model/initial-world 42))
-  (def after (model/update-world-steps before 60 (/ 1.0 60.0)))
-  (select-keys after [:tick :elapsed-seconds :paused? :sim-fps])
+  (def after (model/advance-world-steps before 60 (/ 1.0 60.0)))
+  (:clock after)
   (:particles after)
   (ascii/render after)
-
-  (particle/advance (:config before) 0.5 (first (:particles before)))
 
   (driver/reset-world!)
   (driver/step! 20)

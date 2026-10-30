@@ -51,7 +51,7 @@
               (lanterna/fit-to-window world 80 24)))))))
 
 (deftest rendering-projects-between-fixed-simulation-ticks
-  (let [world (assoc (model/initial-world) :sim-fps 10)
+  (let [world (assoc-in (model/initial-world) [:clock :simulation-fps] 10)
         at-tick (lanterna/fit-to-window world 80 24)
         near-next-tick (lanterna/fit-to-window
                         (model/project-world world 0.09) 80 24)]

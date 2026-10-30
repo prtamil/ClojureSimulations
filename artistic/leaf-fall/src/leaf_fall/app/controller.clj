@@ -30,6 +30,6 @@
     (case command
       :skip (model/skip-phase world)
       :new-tree (model/new-tree world)
-      :raise-sim-fps (model/adjust-sim-fps world fps-step)
-      :lower-sim-fps (model/adjust-sim-fps world (- fps-step))
+      :raise-sim-fps (model/change-simulation-fps world fps-step)
+      :lower-sim-fps (model/change-simulation-fps world (- fps-step))
       world)))

@@ -1,6 +1,14 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.ball
-  "Seeded ball creation and radius-aware wall motion."
+  "Own deterministic ball spawning and radius-aware wall motion.
+
+  WHY: non-overlapping seeded placement and multi-impact wall motion are
+  substantial rules shared by construction and every physics substep.
+  DATA: a ball is {:id :x :y :vx :vy :radius :mass :band-index}; random state
+  is passed in and returned, never retained here.
+  OPERATIONS: spawn balls, test overlap, advance them, and confine them.
+  BOUNDARY: ball-to-ball impulses, world time, controls, and presentation stay
+  outside this namespace."
   (:require
    [sim.model.config :as config]
    [sim.utility.random :as random]))
@@ -30,7 +38,7 @@
             :vy (* speed (Math/sin angle))
             :radius radius
             :mass (* radius radius)
-            :color band}]))
+            :band-index band}]))
 
 (defn overlap? [left right]
   (let [dx (- (:x right) (:x left))

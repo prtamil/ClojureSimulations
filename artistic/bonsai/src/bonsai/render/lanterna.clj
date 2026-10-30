@@ -99,8 +99,8 @@
           (:name (theme/current-theme world))
           (:wind world)
           (int (Math/round (* 100.0 (:growth-progress world))))
-          (:tick world)
-          (if (:paused? world) " PAUSED" "")))
+          (get-in world [:clock :tick])
+          (if (get-in world [:clock :paused?]) " PAUSED" "")))
 
 (defn- draw-frame!
   [{:keys [columns rows] :as surface} world {:keys [measured-fps]}]
@@ -120,7 +120,7 @@
   world)
 
 (defn- tick-batch [world tick-count dt]
-  (publish! (model/update-world-steps world tick-count dt)))
+  (publish! (model/advance-world-steps world tick-count dt)))
 
 (defn- handle-event [world event]
   (let [command (key->command event)]
@@ -137,7 +137,7 @@
         :tick-batch tick-batch
         :draw! draw-frame!
         :handle-event handle-event
-        :simulation-fps #(:sim-fps %)
+        :simulation-fps #(get-in % [:clock :simulation-fps])
         :render-fps #(get-in % [:config :clock :render-fps])
         :max-frame-delta-ms #(get-in % [:config :clock
                                         :max-frame-delta-ms])

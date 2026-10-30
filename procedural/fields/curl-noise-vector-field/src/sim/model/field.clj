@@ -1,12 +1,26 @@
 ;; Copyright (c) 2026 Tamilselvan R  SPDX-License-Identifier: MIT
 (ns sim.model.field
-  "Scalar-potential and curl-field operations over immutable field values."
+  "Own scalar-potential and curl calculations.
+
+  WHY: particles and three static views query the same deterministic field
+  mathematics. Keeping that mathematics here prevents the world lifecycle
+  from being buried under noise formulas.
+
+  DATA: a field is {:time seconds :permutation [...]}.
+  OPERATIONS: advance time, sample potential, velocity, direction, or a grid.
+  BOUNDARY: this namespace does not own particles, trails, controls, or
+  rendering."
   (:require
    [sim.model.config :as config]
    [sim.utility.noise :as noise]))
 
+;; Scalar sample {:position [x y] :intensity 0.5 :band 2}
+;; Vector sample {:position [x y] :intensity 0.5 :band 2
+;;                :velocity [vx vy]}
+
 (defn create [permutation]
-  {:time 0.0 :permutation permutation})
+  {:time 0.0
+   :permutation permutation})
 
 (defn advance
   "Move a field forward by elapsed seconds at the configured drift rate."
@@ -52,13 +66,18 @@
 (defn- clamp [value low high]
   (max low (min high value)))
 
-(defn- band-for [simulation-config intensity]
+(defn- intensity-band [simulation-config intensity]
   (let [band-count (get-in simulation-config [:render :band-count])]
     (-> (* intensity band-count)
         int
         (clamp 0 (dec band-count)))))
 
-(defn- scalar-cell [simulation-config field pattern position]
+(defn- make-sample [simulation-config position intensity]
+  {:position position
+   :intensity intensity
+   :band (intensity-band simulation-config intensity)})
+
+(defn- scalar-sample [simulation-config field pattern position]
   (case pattern
     :potential
     (let [midpoint (get-in simulation-config [:render :potential :midpoint])
@@ -68,21 +87,17 @@
                                  (potential simulation-config field
                                             position false)))
                            0.0 1.0)]
-      {:position position
-       :intensity intensity
-       :band (band-for simulation-config intensity)})
+      (make-sample simulation-config position intensity))
 
     :curl-magnitude
     (let [[vx vy] (velocity simulation-config field position false)
           gain (get-in simulation-config [:views :curl-magnitude :gain])
           intensity (clamp (* gain (Math/hypot vx vy)) 0.0 1.0)]
-      {:position position
-       :intensity intensity
-       :band (band-for simulation-config intensity)})
+      (make-sample simulation-config position intensity))
 
     nil))
 
-(defn- vector-cell [simulation-config field [x y :as position]]
+(defn- vector-sample [simulation-config field [x y :as position]]
   (let [[lattice-x lattice-y] (get-in simulation-config
                                        [:views :vector :lattice])]
     (when (and (zero? (mod x lattice-x))
@@ -91,23 +106,21 @@
             (velocity simulation-config field position false)
             gain (get-in simulation-config [:views :curl-magnitude :gain])
             intensity (clamp (* gain (Math/hypot vx vy)) 0.0 1.0)]
-        {:position position
-         :intensity intensity
-         :band (band-for simulation-config intensity)
-         :velocity sampled-velocity}))))
+        (assoc (make-sample simulation-config position intensity)
+               :velocity sampled-velocity)))))
 
 (defn sample-grid
-  "Sample a static view into semantic cells keyed by [x y]."
+  "Sample a static field view into values keyed by their grid position."
   [simulation-config field pattern]
   (let [width (config/grid-width simulation-config)
         height (config/grid-height simulation-config)
-        sample (if (= pattern :vector)
-                 #(vector-cell simulation-config field %)
-                 #(scalar-cell simulation-config field pattern %))]
+        sample-at (if (= pattern :vector)
+                    #(vector-sample simulation-config field %)
+                    #(scalar-sample simulation-config field pattern %))]
     (into {}
           (keep (fn [position]
-                  (when-let [cell (sample position)]
-                    [position cell])))
+                  (when-let [sample (sample-at position)]
+                    [position sample])))
           (for [y (range height)
                 x (range width)]
             [x y]))))

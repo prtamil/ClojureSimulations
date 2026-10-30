@@ -14,6 +14,9 @@
   (let [first-world (model/initial-world 42)
         second-world (model/initial-world 42)]
     (is (= first-world second-world))
+    (is (= #{:config :seed :generation :clock :style-index :theme-index
+             :pot :tree :cells :wind :growth-progress}
+           (set (keys first-world))))
     (is (map? (:cells first-world)))
     (is (< (count (:cells first-world))
            (config/cell-count (:config first-world))))
@@ -63,21 +66,24 @@
     (is (zero? (:growth-progress new-tree)))
     (is (= 3 (:wind (model/adjust-wind world 99))))
     (is (= 0 (:wind (model/adjust-wind world -99))))
-    (is (= 120 (:sim-fps (model/adjust-sim-fps world 999))))
-    (is (= 10 (:sim-fps (model/adjust-sim-fps world -999))))))
+    (is (= 120 (get-in (model/change-simulation-fps world 999)
+                       [:clock :simulation-fps])))
+    (is (= 10 (get-in (model/change-simulation-fps world -999)
+                      [:clock :simulation-fps])))))
 
 (deftest time-pause-and-growth-are-pure-transitions
   (let [world (model/replay-growth (model/initial-world 42))
-        advanced (model/update-world-steps world 30 (/ 1.0 30.0))
-        grown (model/update-world-steps world 300 (/ 1.0 30.0))
+        advanced (model/advance-world-steps world 30 (/ 1.0 30.0))
+        grown (model/advance-world-steps world 300 (/ 1.0 30.0))
         paused (model/toggle-paused advanced)]
-    (is (= 30 (:tick advanced)))
+    (is (= 30 (get-in advanced [:clock :tick])))
     (is (< 0.0 (:growth-progress advanced) 1.0))
     (is (= 1.0 (:growth-progress grown)))
-    (is (= paused (model/update-world-steps paused 30 (/ 1.0 30.0))))))
+    (is (= paused (model/advance-world-steps paused 30 (/ 1.0 30.0))))))
 
 (deftest animated-glyphs-remain-deterministic
-  (let [world (model/update-world-steps (model/initial-world 42) 60 (/ 1.0 30.0))
+  (let [world (model/advance-world-steps (model/initial-world 42)
+                                         60 (/ 1.0 30.0))
         foliage-cell (first (cells-with-role world :foliage))]
     (is foliage-cell)
     (is (= (cells/display-glyph world foliage-cell)

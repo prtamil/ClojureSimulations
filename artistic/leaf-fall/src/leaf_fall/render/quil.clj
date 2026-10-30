@@ -57,17 +57,18 @@
                         (get-in world [:config :clock :max-frame-delta-ms]))
         {:keys [clock-state ticks dt]}
         (clock/advance (:clock-state renderer-state)
-                       (System/nanoTime) (:sim-fps world)
+                       (System/nanoTime)
+                       (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     (assoc renderer-state :clock-state clock-state)))
 
 (defn- scene-cache-key [world]
   [(:seed world)
    (:cycle world)
    (:phase world)
-   (when (= :falling (:phase world)) (:tick world))])
+   (when (= :falling (:phase world)) (get-in world [:clock :tick]))])
 
 (defn- draw-cell-rows! [world]
   (let [cell-width (render-setting world :cell-width)
@@ -123,9 +124,9 @@
                     total-leaves)
             15 38)
     (q/text (format "%d Hz    tick %,d%s"
-                    (:sim-fps world)
-                    (:tick world)
-                    (if (:paused? world) "    [PAUSED]" ""))
+                    (get-in world [:clock :simulation-fps])
+                    (get-in world [:clock :tick])
+                    (if (get-in world [:clock :paused?]) "    [PAUSED]" ""))
             15 55)
     (fill! (render-setting world :hint))
     (q/text-size 12)

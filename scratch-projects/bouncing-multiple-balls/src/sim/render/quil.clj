@@ -42,10 +42,10 @@
         {:keys [clock-state ticks dt]}
         (clock/advance clock-state
                        (System/nanoTime)
-                       (:sim-fps world)
+                       (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
 (defn- draw-boundary! [world]
@@ -60,11 +60,11 @@
     (q/stroke-weight 1.0)
     (q/rect 0 hud-height (dec width) (dec height))))
 
-(defn- draw-ball! [world {:keys [x y radius color]}]
+(defn- draw-ball! [world {:keys [x y radius band-index]}]
   (let [cell-size (render-setting world :cell-size)
         hud-height (render-setting world :hud-height)
         bands (:bands (active-theme world))
-        rgb (nth bands color)
+        rgb (nth bands band-index)
         highlight (last bands)
         center-x (* x cell-size)
         center-y (+ hud-height (* y cell-size))
@@ -101,13 +101,13 @@
     (q/text-size 12)
     (q/text (format (str "tick %,d    time %.2fs    balls %d    "
                          "speed x%.2f    %d Hz    %s%s")
-                    (:tick world)
-                    (:elapsed-seconds world)
+                    (get-in world [:clock :tick])
+                    (get-in world [:clock :elapsed-seconds])
                     (count (:balls world))
-                    (:speed-mult world)
-                    (:sim-fps world)
+                    (:speed-multiplier world)
+                    (get-in world [:clock :simulation-fps])
                     (:name (active-theme world))
-                    (if (:paused? world) "  [PAUSED]" ""))
+                    (if (get-in world [:clock :paused?]) "  [PAUSED]" ""))
             14 45)
     (fill! (second (:bands (active-theme world))))
     (q/text "t/T theme    r reset    space pause    +/- speed    [ / ] Hz    q quit"

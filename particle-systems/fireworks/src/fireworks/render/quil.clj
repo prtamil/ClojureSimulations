@@ -7,7 +7,7 @@
    [fireworks.app.runtime :as runtime]
    [fireworks.model.config :as config]
    [fireworks.model.core :as model]
-   [fireworks.render.cells :as cells]
+   [fireworks.render.glyphs :as glyphs]
    [fireworks.utility.clock :as clock]
    [fireworks.utility.theme :as theme]))
 
@@ -42,13 +42,14 @@
         max-delta-ns (* clock/nanoseconds-per-millisecond
                         (get-in world [:config :clock :max-frame-delta-ms]))
         {:keys [clock-state ticks dt]}
-        (clock/advance clock-state (System/nanoTime) (:sim-fps world)
+    (clock/advance clock-state (System/nanoTime)
+                   (get-in world [:clock :simulation-fps])
                        max-delta-ns)]
     (when (pos? ticks)
-      (swap! runtime/world model/update-world-steps ticks dt))
+      (swap! runtime/world model/advance-world-steps ticks dt))
     clock-state))
 
-(defn- draw-cell! [world {:keys [column row glyph life bold? color-index]}]
+(defn- draw-glyph! [world {:keys [column row glyph life bold? color-index]}]
   (let [cell-width (render-setting world :cell-width)
         cell-height (render-setting world :cell-height)
         color (theme/spark-rgb world color-index)
@@ -62,8 +63,8 @@
 
 (defn- draw-show! [world]
   (q/text-size (render-setting world :font-size))
-  (doseq [cell (cells/visible-cells world)]
-    (draw-cell! world cell)))
+  (doseq [glyph (glyphs/project-show world)]
+    (draw-glyph! world glyph)))
 
 (defn- draw-palette! [world x y]
   (doseq [[offset palette-index]
@@ -82,10 +83,10 @@
     (q/text-size 15)
     (q/text (format "FIREWORKS   %s   %d Hz   %d rockets   tick %,d%s"
                     (:name active-theme)
-                    (:sim-fps world)
-                    (model/rocket-count world)
-                    (:tick world)
-                    (if (:paused? world) "   [PAUSED]" ""))
+                    (get-in world [:clock :simulation-fps])
+                    (model/firework-count world)
+                    (get-in world [:clock :tick])
+                    (if (get-in world [:clock :paused?]) "   [PAUSED]" ""))
             12 8)
     (draw-palette! world (- (q/width) 132) 12)
     (fill! (render-setting world :hint-text))
